@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from . import audit, crypto
 from .cnj import digits, format_cnj
 from .config import settings
+from .integrations import mni
 from .integrations.mni import Credential, Documento, MniClient, MniError
 from .models import Case, Movement, PjeAviso, PjeCredential, PjeDocument, PjeEndpoint, User
 
@@ -43,6 +44,8 @@ def pick_credential(db: Session, endpoint: PjeEndpoint, prefer_user_id: int | No
 
 
 def _mark(cred: PjeCredential, error: MniError | None) -> None:
+    if error is not None and error.kind == "nao_encontrado":
+        return  # processo inexistente naquela instância não indica problema na credencial
     if error is None:
         cred.last_ok_at, cred.last_error = datetime.now(), None
     else:
@@ -53,7 +56,7 @@ def _mark(cred: PjeCredential, error: MniError | None) -> None:
 
 def sync_case_movements(db: Session, case: Case, http=None) -> tuple[int, list[str]]:
     """Consulta o processo no MNI de cada instância cadastrada para o tribunal. Retorna (novos, avisos)."""
-    novos, erros = 0, []
+    novos, erros, nao_encontrado, achou = 0, [], [], False
     eps = endpoints_for(db, case.tribunal)
     if not eps:
         return 0, []
@@ -67,12 +70,16 @@ def sync_case_movements(db: Session, case: Case, http=None) -> tuple[int, list[s
             _mark(cred, None)
         except MniError as e:
             _mark(cred, e)
+            if e.kind == "nao_encontrado":
+                nao_encontrado.append(f"PJe {ep.tribunal.upper()} {ep.instancia}: processo não encontrado nesta instância")
+                continue
             erros.append(f"PJe {ep.tribunal.upper()} {ep.instancia}: {e}")
             audit.log(db, f"Consulta ao PJe falhou ({ep.tribunal} {ep.instancia}): {e}", tipo="pje", case_id=case.id)
             continue
         except crypto.CryptoUnavailable as e:
             erros.append(str(e))
             continue
+        achou = True
         case.orgao_julgador = case.orgao_julgador or proc.orgao
         for m in proc.movimentos:
             ext = f"{ep.instancia}|{m.external_id}"[:200]
@@ -84,7 +91,20 @@ def sync_case_movements(db: Session, case: Case, http=None) -> tuple[int, list[s
             novos += 1
         audit.log(db, f"Consultou o processo no PJe ({ep.tribunal} {ep.instancia}) com a credencial de {cred.user.name}: {len(proc.movimentos)} movimento(s)",
                   tipo="pje", case_id=case.id)
+    # É normal o processo existir só em um grau; só avisamos se não foi encontrado em nenhum
+    if not achou and nao_encontrado:
+        erros += nao_encontrado
     return novos, erros
+
+
+def diagnose_endpoint(db: Session, ep: PjeEndpoint, http=None) -> "mni.Diagnostico":
+    """Testa o endereço (WSDL, sem credenciais) e, se identificar a versão do MNI, atualiza o cadastro."""
+    diag = mni.diagnosticar(ep.url, client=http)
+    ep.last_check_at, ep.last_check_ok, ep.last_check_status = datetime.now(), diag.ok, diag.mensagem[:500]
+    if diag.versao in {"2.2.2", "2.2.3"} and diag.versao != ep.versao_mni:
+        ep.versao_mni = diag.versao
+    audit.log(db, f"Diagnóstico do MNI {ep.tribunal.upper()} {ep.instancia}: {diag.mensagem}", tipo="pje")
+    return diag
 
 
 def check_avisos(db: Session, http=None, only_user_id: int | None = None) -> dict:
@@ -211,7 +231,8 @@ def download_document(db: Session, case: Case, id_documento: str, user: User, ht
 
 
 def list_documents(db: Session, case: Case, user: User, http=None) -> list[Documento]:
-    """Lista as peças do processo (metadados). O conteúdo que vier junto é descartado."""
+    """Lista as peças do processo em todas as instâncias (metadados). O conteúdo que vier junto é descartado."""
+    docs, falhas = [], []
     for ep in endpoints_for(db, case.tribunal):
         cred = pick_credential(db, ep, user.id)
         if cred is None:
@@ -220,11 +241,14 @@ def list_documents(db: Session, case: Case, user: User, http=None) -> list[Docum
             proc = client_for(ep, http).consultar_processo(credential_of(cred), case.numero_cnj, incluir_documentos=True)
         except MniError as e:
             _mark(cred, e)
-            db.commit()
-            raise PjeUnavailable(str(e)) from e
+            falhas.append(f"{ep.instancia}: {e}")
+            continue
         audit.log(db, f"Listou as peças do processo no PJe ({ep.tribunal} {ep.instancia})", tipo="pje", case_id=case.id)
-        db.commit()
         for d in proc.documentos:
             d.conteudo = None
-        return proc.documentos
-    raise PjeUnavailable("Nenhum endereço MNI com credencial ativa para este tribunal.")
+            d.instancia = ep.instancia
+        docs.extend(proc.documentos)
+    db.commit()
+    if docs:
+        return docs
+    raise PjeUnavailable(" | ".join(falhas) or "Nenhum endereço MNI com credencial ativa para este tribunal.")

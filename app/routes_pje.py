@@ -115,25 +115,32 @@ def document_file(doc_id: int, db: Session = Depends(get_db), user: User = Depen
 # ------------------------------------------------------------------ credenciais do próprio advogado
 
 @router.post("/account/pje")
-def credential_save(request: Request, csrf: str = Form(""), endpoint_id: int = Form(...), cpf: str = Form(...), senha: str = Form(...),
-                    db: Session = Depends(get_db), user: User = Depends(current_user)):
-    check_csrf(request, csrf)
-    ep = get_or_404(db, PjeEndpoint, endpoint_id)
-    if len(digits(cpf)) != 11:
-        flash(request, "CPF inválido.")
+async def credential_save(request: Request, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Salva CPF e senha do PJe para um ou mais endereços (ex.: 1º e 2º graus do mesmo tribunal)."""
+    form = await request.form()
+    check_csrf(request, str(form.get("csrf", "")))
+    cpf, senha = digits(str(form.get("cpf", ""))), str(form.get("senha", ""))
+    ids = [int(i) for i in form.getlist("endpoint_id") if str(i).isdigit()]
+    if len(cpf) != 11 or not senha or not ids:
+        flash(request, "Informe CPF (11 dígitos), senha e ao menos um tribunal/instância.")
         return back("/account#pje")
     try:
-        cpf_enc, senha_enc = crypto.encrypt(digits(cpf)), crypto.encrypt(senha)
+        cpf_enc = crypto.encrypt(cpf)
     except crypto.CryptoUnavailable as e:
         flash(request, str(e))
         return back("/account#pje")
-    cred = db.scalar(select(PjeCredential).where(PjeCredential.user_id == user.id, PjeCredential.endpoint_id == ep.id))
-    if cred is None:
-        db.add(PjeCredential(user_id=user.id, endpoint_id=ep.id, cpf_enc=cpf_enc, senha_enc=senha_enc))
-    else:
-        cred.cpf_enc, cred.senha_enc, cred.ativo, cred.last_error = cpf_enc, senha_enc, True, None
+    nomes = []
+    for ep_id in ids:
+        ep = get_or_404(db, PjeEndpoint, ep_id)
+        senha_enc = crypto.encrypt(senha)
+        cred = db.scalar(select(PjeCredential).where(PjeCredential.user_id == user.id, PjeCredential.endpoint_id == ep.id))
+        if cred is None:
+            db.add(PjeCredential(user_id=user.id, endpoint_id=ep.id, cpf_enc=cpf_enc, senha_enc=senha_enc))
+        else:
+            cred.cpf_enc, cred.senha_enc, cred.ativo, cred.last_error = cpf_enc, senha_enc, True, None
+        nomes.append(f"{ep.tribunal.upper()} {ep.instancia}")
     db.commit()
-    flash(request, f"Credencial do PJe {ep.tribunal.upper()} {ep.instancia} salva (criptografada). Use \"Testar\" para validar.")
+    flash(request, f"Credencial salva (criptografada) para: {', '.join(nomes)}. Use \"Testar\" em cada uma.")
     return back("/account#pje")
 
 

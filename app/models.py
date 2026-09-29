@@ -228,6 +228,10 @@ class PjeEndpoint(Base):
     url: Mapped[str] = mapped_column(String(500))  # ex.: https://pje.tjmg.jus.br/pje/intercomunicacao
     versao_mni: Mapped[str] = mapped_column(String(10), default="2.2.2")
     ativo: Mapped[bool] = mapped_column(Boolean, default=True)
+    origem: Mapped[str | None] = mapped_column(String(300))  # de onde veio o endereço (confirmado/inferido)
+    last_check_at: Mapped[datetime | None] = mapped_column(DateTime)
+    last_check_ok: Mapped[bool | None] = mapped_column(Boolean)
+    last_check_status: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 

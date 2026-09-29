@@ -136,3 +136,8 @@ button.danger-link:hover { border-color: var(--alert); color: var(--alert); }
 table.diff { width: 100%; margin-top: .4rem; }
 table.diff td, table.diff th { padding: .25rem .4rem; }
 table.audit td { font-size: .9rem; }
+.endpoint { border-top: 1px solid var(--line); padding: .9rem 0; display: flex; flex-direction: column; gap: .45rem; }
+.endpoint p { margin: 0; }
+fieldset.endpoints { border: 1px solid var(--line); border-radius: var(--radius); padding: .6rem .9rem; display: flex; flex-direction: column; gap: .35rem; }
+fieldset.endpoints legend { font-size: .72rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .12em; padding: 0 .3rem; }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--nv-salvia); }

@@ -31,6 +31,10 @@ import httpx
 from ..cnj import digits
 
 
+KIND_LABELS = {"credencial": "senha/credencial recusada", "bloqueio": "acesso bloqueado pelo tribunal",
+               "endpoint": "endereço indisponível", "resposta": "resposta inesperada", "nao_encontrado": "não encontrado"}
+
+
 class MniError(Exception):
     def __init__(self, message: str, kind: str = "resposta"):
         super().__init__(message)
@@ -60,6 +64,7 @@ class Documento:
     mimetype: str = "application/pdf"
     data: datetime | None = None
     conteudo: bytes | None = None
+    instancia: str | None = None
 
 
 @dataclass
@@ -178,6 +183,13 @@ def parse_datahora(value: str | None) -> datetime | None:
 
 
 _CRED_RE = re.compile(r"senha|autentic|credenc|usu[áa]rio|acesso negado|login", re.I)
+_NOT_FOUND_RE = re.compile(r"n[ãa]o (foi )?encontrad|inexistente|n[ãa]o localizad|n[ãa]o existe", re.I)
+
+
+def _classify(msg: str) -> str:
+    if _NOT_FOUND_RE.search(msg):
+        return "nao_encontrado"
+    return "credencial" if _CRED_RE.search(msg) else "resposta"
 
 
 def read_response(body: bytes, content_type: str | None, operacao: str) -> tuple[ET.Element, dict[str, bytes]]:
@@ -189,14 +201,14 @@ def read_response(body: bytes, content_type: str | None, operacao: str) -> tuple
     faults = _find_all(root, "Fault")
     if faults:
         msg = _text(_find_all(faults[0], "faultstring")[0]) if _find_all(faults[0], "faultstring") else "Falha SOAP."
-        raise MniError(msg, "credencial" if _CRED_RE.search(msg) else "resposta")
+        raise MniError(msg, _classify(msg))
     found = _find_all(root, f"{operacao}Resposta")
     if not found:
         raise MniError(f"Resposta do MNI sem {operacao}Resposta.", "resposta")
     resp = found[0]
     if _text(_child(resp, "sucesso")).lower() != "true":
         msg = _text(_child(resp, "mensagem")) or "O tribunal recusou a consulta."
-        raise MniError(msg, "credencial" if _CRED_RE.search(msg) else "resposta")
+        raise MniError(msg, _classify(msg))
     return resp, attachments
 
 
@@ -263,7 +275,7 @@ def parse_processo(resp: ET.Element, attachments: dict[str, bytes]) -> ProcessoM
     proc = _child(resp, "processo")
     dados = _child(proc, "dadosBasicos")
     if proc is None or dados is None:
-        raise MniError("Processo não encontrado ou sem acesso para esta credencial.", "resposta")
+        raise MniError("Processo não encontrado nesta instância ou sem acesso para esta credencial.", "nao_encontrado")
     movimentos = []
     for m in _children(proc, "movimento"):
         dt = parse_datahora(_attr(m, "dataHora"))
@@ -325,6 +337,9 @@ class MniClient:
                 client.close()
         if r.status_code in (401, 403, 429):
             raise MniError(f"O tribunal bloqueou o acesso (HTTP {r.status_code}).", "bloqueio")
+        if r.is_redirect:
+            raise MniError(f"O endereço redirecionou para {r.headers.get('location', '?')} (provável página de login): "
+                           "o endereço do MNI está errado ou o serviço está fechado para acesso externo.", "endpoint")
         if b"Envelope" not in r.content[:200000]:
             raise MniError(f"O endereço do MNI respondeu HTTP {r.status_code} sem SOAP.", "endpoint")
         return read_response(r.content, r.headers.get("content-type"), operacao)
@@ -353,3 +368,50 @@ class MniClient:
                   ("numeroProcesso", digits(numero)), ("identificadorAviso", id_aviso)]
         resp, att = self._call("consultarTeorComunicacao", campos)
         return parse_teor(resp, att)
+
+
+# ------------------------------------------------------------------ diagnóstico do endereço
+
+@dataclass
+class Diagnostico:
+    ok: bool
+    mensagem: str
+    versao: str | None = None
+
+
+_VERSAO_RE = re.compile(r"intercomunicacao-(\d+\.\d+\.\d+)")
+
+
+def diagnosticar(url: str, client: httpx.Client | None = None, timeout: float = 30) -> Diagnostico:
+    """Baixa o WSDL (<url>?wsdl) SEM credenciais e verifica se é um serviço MNI.
+
+    Não envia CPF nem senha e não consulta nenhum processo: serve só para validar o endereço e a versão.
+    """
+    own = client is None
+    client = client or httpx.Client(timeout=timeout)
+    try:
+        r = client.get(url.rstrip("?") + "?wsdl", follow_redirects=False)
+    except httpx.HTTPError as e:
+        return Diagnostico(False, f"Sem conexão: {e}. Verifique a internet do servidor, firewall e o endereço.")
+    finally:
+        if own:
+            client.close()
+    if r.is_redirect:
+        return Diagnostico(False, f"Redireciona para {r.headers.get('location', '?')} (provável página de login). "
+                                  "Peça ao tribunal o endereço correto do MNI para sistemas externos.")
+    if r.status_code in (401, 403):
+        return Diagnostico(False, f"HTTP {r.status_code}: o tribunal bloqueia o acesso a partir deste servidor "
+                                  "(pode exigir liberação do IP do escritório).")
+    if r.status_code != 200:
+        return Diagnostico(False, f"HTTP {r.status_code} ao buscar o WSDL.")
+    text = r.text[:400000]
+    if "definitions" not in text or "intercomunicacao" not in text.lower():
+        return Diagnostico(False, "A resposta não é um WSDL do MNI (provavelmente uma página HTML).")
+    versoes = sorted(set(_VERSAO_RE.findall(text)))
+    versao = versoes[-1] if versoes else None
+    ops = [op for op in ("consultarAvisosPendentes", "consultarProcesso", "consultarTeorComunicacao") if op in text]
+    faltando = {"consultarAvisosPendentes", "consultarProcesso", "consultarTeorComunicacao"} - set(ops)
+    msg = f"WSDL do MNI encontrado (versão {versao or 'não identificada'})."
+    if faltando:
+        return Diagnostico(False, msg + f" Faltam operações: {', '.join(sorted(faltando))}.", versao)
+    return Diagnostico(True, msg + " Operações necessárias disponíveis.", versao)

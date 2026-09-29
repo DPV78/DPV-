@@ -35,9 +35,14 @@
   {% if endpoints %}
   <form method="post" action="/account/pje" class="stack" autocomplete="off">
     <input type="hidden" name="csrf" value="{{ csrf }}">
-    <label>Tribunal / instância
-      <select name="endpoint_id">{% for e in endpoints %}<option value="{{ e.id }}">{{ e.tribunal|upper }} {{ e.instancia }}</option>{% endfor %}</select>
-    </label>
+    <fieldset class="endpoints">
+      <legend>Usar esta senha em</legend>
+      {% for e in endpoints %}
+      <label class="check"><input type="checkbox" name="endpoint_id" value="{{ e.id }}" {% if e.id not in creds|map(attribute='endpoint_id')|list %}checked{% endif %}>
+        {{ e.tribunal|upper }} — {{ '1º grau' if e.instancia == '1g' else ('2º grau' if e.instancia == '2g' else e.instancia) }}</label>
+      {% endfor %}
+      <p class="small muted">Se a senha do PJe for diferente em algum grau ou tribunal, salve separadamente.</p>
+    </fieldset>
     <label>CPF <input name="cpf" required inputmode="numeric" autocomplete="off"></label>
     <label>Senha do PJe <input type="password" name="senha" required autocomplete="new-password"></label>
     <button class="primary">Salvar credencial</button>

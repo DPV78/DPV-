@@ -37,6 +37,14 @@ def add_missing_columns() -> list[str]:
 def init_db() -> None:
     Base.metadata.create_all(engine)
     add_missing_columns()
+    from .pje_presets import seed_presets
+
+    with SessionLocal() as db:
+        from .models import PjeEndpoint
+
+        if not db.scalar(select(func.count(PjeEndpoint.id))):
+            seed_presets(db)  # primeira execução: TJRO e TRF1 (1º e 2º graus)
+            db.commit()
     if settings.admin_email and settings.admin_password:
         with SessionLocal() as db:
             if not db.scalar(select(func.count(User.id))):

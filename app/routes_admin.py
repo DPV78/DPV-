@@ -105,6 +105,48 @@ def endpoints_create(request: Request, csrf: str = Form(""), tribunal: str = For
     return back("/admin/pje")
 
 
+@router.post("/admin/pje/{ep_id}/edit")
+def endpoints_edit(ep_id: int, request: Request, csrf: str = Form(""), url: str = Form(...), versao_mni: str = Form("2.2.2"),
+                   db: Session = Depends(get_db), user: User = Depends(admin_user)):
+    check_csrf(request, csrf)
+    ep = get_or_404(db, PjeEndpoint, ep_id)
+    url = url.strip().removesuffix("?wsdl")
+    if not url.startswith("https://") or versao_mni not in {"2.2.2", "2.2.3"}:
+        flash(request, "Endereço deve começar com https:// e a versão deve ser 2.2.2 ou 2.2.3.")
+        return back("/admin/pje")
+    if url != ep.url:
+        ep.origem = f"Alterado manualmente por {user.name}"
+        ep.last_check_at = ep.last_check_ok = ep.last_check_status = None
+    ep.url, ep.versao_mni = url, versao_mni
+    db.commit()
+    return back("/admin/pje")
+
+
+@router.post("/admin/pje/diagnosticar")
+def endpoints_diagnose(request: Request, csrf: str = Form(""), ep_id: int | None = Form(None),
+                       db: Session = Depends(get_db), user: User = Depends(admin_user)):
+    """Testa os endereços buscando o WSDL — sem credenciais e sem consultar processos."""
+    from . import pje_service
+
+    check_csrf(request, csrf)
+    eps = [get_or_404(db, PjeEndpoint, ep_id)] if ep_id else db.scalars(select(PjeEndpoint).where(PjeEndpoint.ativo.is_(True))).all()
+    oks = sum(pje_service.diagnose_endpoint(db, ep).ok for ep in eps)
+    db.commit()
+    flash(request, f"Diagnóstico concluído: {oks} de {len(eps)} endereço(s) respondendo como MNI. Veja o resultado de cada um na tabela.")
+    return back("/admin/pje")
+
+
+@router.post("/admin/pje/presets")
+def endpoints_presets(request: Request, csrf: str = Form(""), db: Session = Depends(get_db), user: User = Depends(admin_user)):
+    from .pje_presets import seed_presets
+
+    check_csrf(request, csrf)
+    n = seed_presets(db)
+    db.commit()
+    flash(request, f"{n} endereço(s) pré-cadastrado(s) incluído(s)." if n else "Os endereços do TJRO e do TRF1 já estão cadastrados.")
+    return back("/admin/pje")
+
+
 @router.post("/admin/pje/{ep_id}/toggle")
 def endpoints_toggle(ep_id: int, request: Request, csrf: str = Form(""), db: Session = Depends(get_db), user: User = Depends(admin_user)):
     check_csrf(request, csrf)

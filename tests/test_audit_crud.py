@@ -137,7 +137,7 @@ def test_pje_flow(admin, lawyer, case_id, monkeypatch):
     a.post("/admin/pje", data={"csrf": at, "tribunal": "tjmg", "instancia": "1g",
                                "url": "https://pje.exemplo.jus.br/pje/intercomunicacao", "versao_mni": "2.2.3"})
     with SessionLocal() as db:
-        ep_id = db.scalar(select(PjeEndpoint.id))
+        ep_id = db.scalar(select(PjeEndpoint.id).where(PjeEndpoint.tribunal == "tjmg"))
     c.post("/account/pje", data={"csrf": t, "endpoint_id": ep_id, "cpf": "111.222.333-44", "senha": "segredo-pje"})
     with SessionLocal() as db:
         cred = db.scalar(select(PjeCredential))

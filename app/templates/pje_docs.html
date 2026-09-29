@@ -7,11 +7,12 @@
   <p class="small muted">Baixar uma peça fica registrado na auditoria. Se a peça estiver ligada a uma intimação pendente, confira no PJe se o tribunal trata o acesso como ciência antes de baixar.</p>
   {% if docs %}
   <table>
-    <thead><tr><th>Data</th><th>Documento</th><th>Tipo</th><th></th></tr></thead>
+    <thead><tr><th>Data</th><th>Grau</th><th>Documento</th><th>Tipo</th><th></th></tr></thead>
     <tbody>
     {% for d in docs %}
     <tr>
       <td>{{ d.data|dt if d.data else '—' }}</td>
+      <td>{{ d.instancia or '' }}</td>
       <td>{{ d.descricao }} <span class="muted small mono">{{ d.id_documento }}</span></td>
       <td class="small">{{ d.mimetype }}</td>
       <td>{% if d.id_documento in baixados %}<span class="tag green">baixado</span>{% elif d.id_documento %}

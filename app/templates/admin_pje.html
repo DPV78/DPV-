@@ -1,33 +1,47 @@
 {% extends "base.html" %}
 {% block title %}Endereços do PJe{% endblock %}
 {% block content %}
-<h1>Endereços do PJe (MNI)</h1>
+<div class="row between">
+  <h1>Endereços do PJe (MNI)</h1>
+  <div class="row">
+    <form method="post" action="/admin/pje/diagnosticar" data-busy="Testando endereços…"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="primary">Diagnosticar todos</button></form>
+    <form method="post" action="/admin/pje/presets"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Recarregar TJRO e TRF1</button></form>
+  </div>
+</div>
 <section class="card">
-  <p class="small muted">Cada tribunal e instância tem seu próprio endereço do webservice MNI. Obtenha o endereço oficial com o tribunal (em geral termina em <span class="mono">/intercomunicacao</span>; o WSDL fica em <span class="mono">…?wsdl</span>). Nem todo PJe libera o MNI para advogados. O "tribunal" deve ser o mesmo alias usado no cadastro do processo (ex.: tjmg, trt3, trf1).</p>
-  {% if endpoints %}
-  <table>
-    <thead><tr><th>Tribunal</th><th>Instância</th><th>Endereço</th><th>Versão</th><th>Credenciais</th><th>Situação</th><th></th></tr></thead>
-    <tbody>
-    {% for e in endpoints %}
-    {% set ec = creds|selectattr('endpoint_id', 'equalto', e.id)|list %}
-    <tr class="{% if not e.ativo %}dim{% endif %}">
-      <td>{{ e.tribunal|upper }}</td><td>{{ e.instancia }}</td><td class="mono small">{{ e.url }}</td><td>{{ e.versao_mni }}</td>
-      <td class="small">{% for c in ec %}{{ c.user.name }}{% if not c.ativo %} (suspensa){% endif %}{% if not loop.last %}, {% endif %}{% else %}—{% endfor %}</td>
-      <td>{{ 'ativo' if e.ativo else 'inativo' }}</td>
-      <td><form method="post" action="/admin/pje/{{ e.id }}/toggle"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small">{{ 'Desativar' if e.ativo else 'Ativar' }}</button></form></td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% else %}<p class="muted">Nenhum endereço cadastrado.</p>{% endif %}
+  <p class="small muted">O diagnóstico busca o WSDL de cada endereço <strong>sem enviar credenciais e sem consultar processos</strong>: confirma que o endereço responde como MNI e detecta a versão (2.2.2 ou 2.2.3), atualizando o cadastro. Rode-o no servidor do escritório; se um endereço falhar, peça o endereço correto ao tribunal e edite-o abaixo. O "tribunal" deve ser o mesmo usado no cadastro do processo (tjro, trf1).</p>
+  {% for e in endpoints %}
+  {% set ec = creds|selectattr('endpoint_id', 'equalto', e.id)|list %}
+  <div class="endpoint {% if not e.ativo %}dim{% endif %}">
+    <div class="row between">
+      <div><strong>{{ e.tribunal|upper }} — {{ '1º grau' if e.instancia == '1g' else ('2º grau' if e.instancia == '2g' else e.instancia) }}</strong>
+        {% if e.last_check_ok %}<span class="tag green">MNI respondendo</span>{% elif e.last_check_ok == false %}<span class="tag red">falhou</span>{% else %}<span class="tag">não testado</span>{% endif %}
+        {% if not e.ativo %}<span class="tag">inativo</span>{% endif %}
+      </div>
+      <div class="row">
+        <form method="post" action="/admin/pje/diagnosticar" data-busy="Testando…"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="ep_id" value="{{ e.id }}"><button class="small">Diagnosticar</button></form>
+        <form method="post" action="/admin/pje/{{ e.id }}/toggle"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small">{{ 'Desativar' if e.ativo else 'Ativar' }}</button></form>
+      </div>
+    </div>
+    <form method="post" action="/admin/pje/{{ e.id }}/edit" class="row">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input name="url" value="{{ e.url }}" class="grow mono">
+      <select name="versao_mni">{% for v in ['2.2.2','2.2.3'] %}<option {% if e.versao_mni == v %}selected{% endif %}>{{ v }}</option>{% endfor %}</select>
+      <button class="small">Salvar</button>
+    </form>
+    {% if e.last_check_status %}<p class="small">Último diagnóstico ({{ e.last_check_at|dt }}): {{ e.last_check_status }}</p>{% endif %}
+    {% if e.origem %}<p class="small muted">Origem do endereço: {{ e.origem }}</p>{% endif %}
+    <p class="small muted">Credenciais: {% for c in ec %}{{ c.user.name }}{% if not c.ativo %} (suspensa){% endif %}{% if not loop.last %}, {% endif %}{% else %}nenhuma{% endfor %}</p>
+  </div>
+  {% else %}<p class="muted">Nenhum endereço cadastrado.</p>{% endfor %}
 </section>
 <section class="card narrow">
-  <h2>Adicionar endereço</h2>
+  <h2>Adicionar outro endereço</h2>
   <form method="post" action="/admin/pje" class="stack">
     <input type="hidden" name="csrf" value="{{ csrf }}">
-    <label>Tribunal (alias) <input name="tribunal" required placeholder="tjmg"></label>
-    <label>Instância <input name="instancia" value="1g" placeholder="1g, 2g…"></label>
-    <label>Endereço do MNI <input name="url" required placeholder="https://pje.tjmg.jus.br/pje/intercomunicacao"></label>
+    <label>Tribunal (alias) <input name="tribunal" required placeholder="tjro"></label>
+    <label>Instância <input name="instancia" value="1g" placeholder="1g, 2g, turma recursal…"></label>
+    <label>Endereço do MNI <input name="url" required placeholder="https://…/intercomunicacao"></label>
     <label>Versão do MNI <select name="versao_mni"><option>2.2.2</option><option>2.2.3</option></select></label>
     <button class="primary">Adicionar</button>
   </form>

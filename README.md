@@ -85,6 +85,28 @@ variar entre tribunais; confira antes de baixar uma peça ligada a uma intimaç�
 3. Cada advogado cadastra o próprio CPF e a senha do PJe em **Minha conta** e clica em **Testar**. O teste só
    consulta as intimações pendentes e não registra ciência.
 
+### TJRO e TRF1 (1º e 2º graus)
+Na primeira execução, o aplicativo já cadastra os quatro endereços:
+
+| Tribunal | Grau | Endereço pré-cadastrado | Origem |
+|---|---|---|---|
+| TJRO | 1º | `https://pjepg.tjro.jus.br/pje/intercomunicacao` | host oficial do PJe 1º grau do TJRO; caminho inferido do padrão do PJe |
+| TJRO | 2º | `https://pjesg.tjro.jus.br/pje/intercomunicacao` | host oficial do PJe 2º grau do TJRO; caminho inferido do padrão do PJe |
+| TRF1 | 1º | `https://pje1g.trf1.jus.br/pje/intercomunicacao` | tabela de endereços de um projeto aberto (não oficial) |
+| TRF1 | 2º | `https://pje2g.trf1.jus.br/pje/intercomunicacao` | tabela de endereços de um projeto aberto (não oficial) |
+
+**Nenhum dos quatro foi testado** (o ambiente de desenvolvimento não alcança os tribunais). Depois de instalar:
+1. Em **Administração › Endereços do PJe**, clique em **Diagnosticar todos**. O diagnóstico busca o WSDL sem
+   enviar senha e sem consultar processos. Ele confirma o endereço, detecta a versão do MNI (2.2.2 ou 2.2.3) e
+   ajusta o cadastro. Se algum falhar (por exemplo, com redirecionamento para a página de login ou bloqueio por
+   IP), peça o endereço correto à TI do tribunal e edite-o na mesma tela.
+2. Cada advogado, em **Minha conta**, cadastra CPF e senha **uma vez** e marca os graus e tribunais em que ela
+   vale. Se a senha for diferente em algum deles, salve-a separadamente.
+3. Cadastre os processos com o número CNJ. O tribunal é detectado pelo número (`tjro` ou `trf1`), e o aplicativo
+   consulta **os dois graus**. É normal o processo existir só em um deles: nesse caso não há aviso de erro. Um
+   recurso com numeração própria no 2º grau (por exemplo, um agravo de instrumento) deve ser cadastrado como
+   processo próprio.
+
 ### Cuidados e limitações
 - **Nem todo PJe libera o MNI para advogados**, e um WSDL publicado não garante que o serviço funcione.
   Teste tribunal por tribunal.
@@ -182,7 +204,8 @@ app/
   models.py            processos, andamentos, decisões, passos, notas, estratégia, PJe, auditoria
   audit.py             auditoria automática com cadeia de hash
   pje_service.py       regras do PJe: intimações, ciência, documentos, credenciais
-  integrations/        mni.py (PJe autenticado), datajud.py, djen.py
+  integrations/        mni.py (PJe autenticado + diagnóstico), datajud.py, djen.py
+  pje_presets.py       endereços pré-cadastrados do TJRO e do TRF1 (1º e 2º graus)
   ai.py                assistente estratégico (Claude)
   sync.py              sincronização e deduplicação de andamentos
   migrate.py, backup.py, crypto.py, cnj.py, web.py, auth.py

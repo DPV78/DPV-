@@ -4,64 +4,45 @@ import logging
 import secrets
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
-from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from markupsafe import Markup
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import ai, cnj
-from .auth import LoginRequired, admin_user, current_user, hash_password, verify_password
+from . import ai, audit, cnj
+from .auth import LoginRequired, current_user, hash_password, verify_password
 from .config import settings
-from .db import Base, SessionLocal, engine, get_db
+from .db import SessionLocal, get_db
+from .migrate import init_db
 from .models import (
-    AuditLog, Case, Decision, DiscussionMessage, Movement, NextStep, Note, StrategyVersion, User,
+    Case, Decision, DiscussionMessage, Movement, NextStep, Note, PjeAviso, StrategyVersion, User,
 )
-from .sync import sync_all, sync_case
+from .sync import check_avisos_job, sync_all, sync_case
+from .web import BASE_DIR, back, check_csrf, flash, get_or_404, parse_date, render, soft_delete
 
 log = logging.getLogger("app")
-BASE_DIR = Path(__file__).resolve().parent
-templates = Jinja2Templates(directory=BASE_DIR / "templates")
-
-
-def _fmt_date(value) -> str:
-    if not value:
-        return ""
-    return value.strftime("%d/%m/%Y %H:%M" if isinstance(value, datetime) and (value.hour or value.minute) else "%d/%m/%Y")
-
-
-templates.env.filters["dt"] = _fmt_date
-templates.env.globals["today"] = date.today
-# Logotipo em vetor (extraído do Manual de Marca), inline para herdar a cor via CSS
-_LOGO = (BASE_DIR / "static" / "logo.svg").read_text(encoding="utf-8")
-templates.env.globals["logo_svg"] = Markup(_LOGO.replace("<svg ", '<svg class="logo" ', 1))
-
-
-def init_db() -> None:
-    Base.metadata.create_all(engine)
-    if settings.admin_email and settings.admin_password:
-        with SessionLocal() as db:
-            if not db.scalar(select(func.count(User.id))):
-                db.add(User(name=settings.admin_name, email=settings.admin_email.lower(),
-                            password_hash=hash_password(settings.admin_password), is_admin=True))
-                db.commit()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
     scheduler = None
-    if settings.sync_interval_hours > 0:
+    if settings.sync_interval_hours > 0 or settings.avisos_interval_hours > 0 or settings.database_url.startswith("sqlite"):
         from apscheduler.schedulers.background import BackgroundScheduler
 
         scheduler = BackgroundScheduler()
-        scheduler.add_job(sync_all, "interval", hours=settings.sync_interval_hours, args=[SessionLocal],
-                          id="sync_all", next_run_time=datetime.now() + timedelta(minutes=1))
+        if settings.sync_interval_hours > 0:
+            scheduler.add_job(sync_all, "interval", hours=settings.sync_interval_hours, args=[SessionLocal],
+                              id="sync_all", next_run_time=datetime.now() + timedelta(minutes=1))
+        from .backup import run_backup
+
+        scheduler.add_job(run_backup, "cron", hour=23, minute=0, id="backup")
+        if settings.avisos_interval_hours > 0:
+            scheduler.add_job(check_avisos_job, "interval", hours=settings.avisos_interval_hours, args=[SessionLocal],
+                              id="avisos", next_run_time=datetime.now() + timedelta(minutes=2))
         scheduler.start()
     yield
     if scheduler:
@@ -69,54 +50,42 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Carteira Estratégica", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def actor_context(request: Request, call_next):
+    """Identifica quem está agindo (usuário e IP) para a trilha de auditoria."""
+    session = request.scope.get("session") or {}
+    ip = request.client.host if request.client else None
+    token = audit.current_actor.set(audit.Actor(user_id=session.get("uid"), user_name=session.get("uname"), ip=ip))
+    try:
+        return await call_next(request)
+    finally:
+        audit.current_actor.reset(token)
+
+
+# Adicionado depois = executa antes: a sessão precisa estar disponível para o middleware acima
 app.add_middleware(SessionMiddleware, secret_key=settings.secret_key, same_site="lax",
-                   https_only=settings.secret_key != "dev-inseguro-troque", max_age=60 * 60 * 12)
+                   https_only=settings.session_https_only, max_age=60 * 60 * 12)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+
+from . import routes_admin, routes_pje  # noqa: E402
+
+app.include_router(routes_pje.router)
+app.include_router(routes_admin.router)
 
 
 @app.exception_handler(LoginRequired)
 async def _login_required(request: Request, exc: LoginRequired):
-    return RedirectResponse("/login", status_code=303)
+    return back("/login")
 
 
-def render(request: Request, name: str, user: User | None, **ctx) -> HTMLResponse:
-    if "csrf" not in request.session:
-        request.session["csrf"] = secrets.token_urlsafe(24)
-    flash = request.session.pop("flash", None)
-    return templates.TemplateResponse(request, name, {"user": user, "flash": flash, "csrf": request.session["csrf"], **ctx})
-
-
-def check_csrf(request: Request, token: str) -> None:
-    if not token or token != request.session.get("csrf"):
-        raise HTTPException(400, "Token de formulário inválido. Recarregue a página.")
-
-
-def flash(request: Request, message: str) -> None:
-    request.session["flash"] = message
-
-
-def audit(db: Session, user: User | None, case_id: int | None, acao: str) -> None:
-    db.add(AuditLog(user_id=user.id if user else None, case_id=case_id, acao=acao[:300]))
-
-
-def back(url: str) -> RedirectResponse:
-    return RedirectResponse(url, status_code=303)
+def active_users(db: Session) -> list[User]:
+    return list(db.scalars(select(User).where(User.active.is_(True)).order_by(User.name)))
 
 
 def get_case(db: Session, case_id: int) -> Case:
-    case = db.get(Case, case_id)
-    if not case:
-        raise HTTPException(404, "Processo não encontrado")
-    return case
-
-
-def parse_date(value: str | None) -> date | None:
-    if not value:
-        return None
-    try:
-        return date.fromisoformat(value)
-    except ValueError:
-        return None
+    return get_or_404(db, Case, case_id)
 
 
 # ---------------------------------------------------------------- autenticação
@@ -130,15 +99,23 @@ def login_page(request: Request):
 def login(request: Request, email: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
     user = db.scalar(select(User).where(User.email == email.strip().lower()))
     if not user or not user.active or not verify_password(password, user.password_hash):
+        audit.log(db, f"Tentativa de login recusada: {email.strip().lower()[:100]}", tipo="acesso")
+        db.commit()
         flash(request, "E-mail ou senha inválidos.")
         return back("/login")
     request.session.clear()
-    request.session["uid"] = user.id
+    request.session["uid"], request.session["uname"] = user.id, user.name
+    audit.current_actor.set(audit.Actor(user.id, user.name, request.client.host if request.client else None))
+    audit.log(db, "Login", tipo="acesso")
+    db.commit()
     return back("/")
 
 
 @app.post("/logout")
-def logout(request: Request):
+def logout(request: Request, db: Session = Depends(get_db)):
+    if request.session.get("uid"):
+        audit.log(db, "Logout", tipo="acesso")
+        db.commit()
     request.session.clear()
     return back("/login")
 
@@ -147,24 +124,28 @@ def logout(request: Request):
 
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    cases = db.scalars(select(Case).order_by(Case.status, Case.prioridade, Case.titulo)).all()
-    unread = dict(db.execute(select(Movement.case_id, func.count()).where(Movement.lido.is_(False)).group_by(Movement.case_id)).all())
-    open_dec = dict(db.execute(select(Decision.case_id, func.count()).where(Decision.status == "aberta").group_by(Decision.case_id)).all())
+    cases = db.scalars(select(Case).where(Case.deleted_at.is_(None)).order_by(Case.status, Case.prioridade, Case.titulo)).all()
+    live = Movement.deleted_at.is_(None)
+    unread = dict(db.execute(select(Movement.case_id, func.count()).where(Movement.lido.is_(False), live).group_by(Movement.case_id)).all())
+    open_dec = dict(db.execute(select(Decision.case_id, func.count()).where(Decision.status == "aberta", Decision.deleted_at.is_(None)).group_by(Decision.case_id)).all())
+    step_live = (NextStep.status == "pendente", NextStep.deleted_at.is_(None))
     next_deadline = dict(db.execute(
-        select(NextStep.case_id, func.min(NextStep.prazo)).where(NextStep.status == "pendente", NextStep.prazo.is_not(None)).group_by(NextStep.case_id)
+        select(NextStep.case_id, func.min(NextStep.prazo)).where(*step_live, NextStep.prazo.is_not(None)).group_by(NextStep.case_id)
     ).all())
     upcoming = db.scalars(
-        select(NextStep).where(NextStep.status == "pendente", NextStep.prazo.is_not(None), NextStep.prazo <= date.today() + timedelta(days=15))
-        .order_by(NextStep.prazo)
+        select(NextStep).join(Case).where(*step_live, Case.deleted_at.is_(None), NextStep.prazo.is_not(None),
+                                          NextStep.prazo <= date.today() + timedelta(days=15)).order_by(NextStep.prazo)
     ).all()
-    recent = db.scalars(select(Movement).where(Movement.lido.is_(False)).order_by(Movement.data.desc()).limit(15)).all()
+    recent = db.scalars(select(Movement).join(Case).where(Movement.lido.is_(False), live, Case.deleted_at.is_(None))
+                        .order_by(Movement.data.desc()).limit(15)).all()
+    avisos = db.scalars(select(PjeAviso).where(PjeAviso.status == "pendente").order_by(PjeAviso.data_disponibilizacao)).all()
     return render(request, "dashboard.html", user, cases=cases, unread=unread, open_dec=open_dec,
-                  next_deadline=next_deadline, upcoming=upcoming, recent=recent)
+                  next_deadline=next_deadline, upcoming=upcoming, recent=recent, avisos=avisos)
 
 
 @app.get("/agenda", response_class=HTMLResponse)
 def agenda(request: Request, db: Session = Depends(get_db), user: User = Depends(current_user), mine: int = 0):
-    q = select(NextStep).where(NextStep.status == "pendente")
+    q = select(NextStep).join(Case).where(NextStep.status == "pendente", NextStep.deleted_at.is_(None), Case.deleted_at.is_(None))
     if mine:
         q = q.where(NextStep.responsavel_id == user.id)
     steps = db.scalars(q.order_by(NextStep.prazo.is_(None), NextStep.prazo, NextStep.created_at)).all()
@@ -175,8 +156,7 @@ def agenda(request: Request, db: Session = Depends(get_db), user: User = Depends
 
 @app.get("/cases/new", response_class=HTMLResponse)
 def case_new(request: Request, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name)).all()
-    return render(request, "case_form.html", user, case=None, users=users)
+    return render(request, "case_form.html", user, case=None, users=active_users(db))
 
 
 @app.post("/cases/new")
@@ -192,8 +172,10 @@ def case_create(
     if not cnj.is_valid(numero):
         flash(request, f"Número CNJ inválido (dígito verificador não confere): {numero_cnj}")
         return back("/cases/new")
-    if db.scalar(select(Case.id).where(Case.numero_cnj == numero)):
-        flash(request, "Este processo já está na carteira.")
+    existing = db.scalar(select(Case).where(Case.numero_cnj == numero))
+    if existing is not None:
+        flash(request, "Este processo já está na carteira." if existing.deleted_at is None
+              else "Este processo está na lixeira. Peça ao administrador para restaurá-lo.")
         return back("/cases/new")
     trib = (tribunal.strip().lower() or cnj.guess_tribunal(numero) or "").strip()
     if not trib:
@@ -209,7 +191,6 @@ def case_create(
     db.flush()
     db.add(StrategyVersion(case_id=case.id, objetivo=case.objetivo, estrategia=case.estrategia, riscos=case.riscos,
                            premissas=case.premissas, motivo="Estratégia inicial", author_id=user.id))
-    audit(db, user, case.id, "Processo cadastrado")
     db.commit()
     flash(request, "Processo cadastrado. Use \"Sincronizar agora\" para importar os andamentos.")
     return back(f"/cases/{case.id}")
@@ -218,17 +199,19 @@ def case_create(
 @app.get("/cases/{case_id}", response_class=HTMLResponse)
 def case_detail(case_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(current_user)):
     case = get_case(db, case_id)
-    users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name)).all()
-    logs = db.scalars(select(AuditLog).where(AuditLog.case_id == case_id).order_by(AuditLog.created_at.desc()).limit(30)).all()
-    return render(request, "case.html", user, case=case, users=users, logs=logs,
-                  pending=sorted((s for s in case.steps if s.status == "pendente"), key=lambda s: (s.prazo is None, s.prazo or date.max)),
-                  done=[s for s in case.steps if s.status != "pendente"])
+    from .models import AuditLog, PjeDocument
+
+    logs = db.scalars(select(AuditLog).where(AuditLog.case_id == case_id).order_by(AuditLog.id.desc()).limit(40)).all()
+    avisos = db.scalars(select(PjeAviso).where(PjeAviso.case_id == case_id).order_by(PjeAviso.first_seen_at.desc())).all()
+    docs = db.scalars(select(PjeDocument).where(PjeDocument.case_id == case_id).order_by(PjeDocument.created_at.desc())).all()
+    pending = sorted((s for s in case.steps if s.status == "pendente"), key=lambda s: (s.prazo is None, s.prazo or date.max))
+    return render(request, "case.html", user, case=case, users=active_users(db), logs=logs, avisos=avisos, docs=docs,
+                  pending=pending, done=[s for s in case.steps if s.status != "pendente"])
 
 
 @app.get("/cases/{case_id}/edit", response_class=HTMLResponse)
 def case_edit_page(case_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name)).all()
-    return render(request, "case_form.html", user, case=get_case(db, case_id), users=users)
+    return render(request, "case_form.html", user, case=get_case(db, case_id), users=active_users(db))
 
 
 @app.post("/cases/{case_id}/edit")
@@ -246,9 +229,24 @@ def case_edit(
     case.prioridade, case.status = prioridade, status
     case.orgao_julgador, case.classe = orgao_julgador or None, classe or None
     case.responsavel_id = int(responsavel_id) if responsavel_id else None
-    audit(db, user, case.id, "Dados do processo atualizados")
     db.commit()
+    flash(request, "Dados do processo atualizados.")
     return back(f"/cases/{case_id}")
+
+
+@app.post("/cases/{case_id}/delete")
+def case_delete(case_id: int, request: Request, csrf: str = Form(""), motivo: str = Form(""),
+                db: Session = Depends(get_db), user: User = Depends(current_user)):
+    check_csrf(request, csrf)
+    case = get_case(db, case_id)
+    if not motivo.strip():
+        flash(request, "Informe o motivo da exclusão.")
+        return back(f"/cases/{case_id}/edit")
+    soft_delete(case, user)
+    audit.log(db, f"Motivo da exclusão do processo {case.numero_cnj}: {motivo.strip()}", tipo="excluir", case_id=case.id)
+    db.commit()
+    flash(request, f"Processo {case.numero_cnj} movido para a lixeira. Somente o administrador pode restaurá-lo ou apagá-lo definitivamente.")
+    return back("/")
 
 
 @app.post("/cases/{case_id}/strategy")
@@ -266,7 +264,6 @@ def case_strategy(
     case.riscos, case.premissas = riscos or None, premissas or None
     db.add(StrategyVersion(case_id=case.id, objetivo=case.objetivo, estrategia=case.estrategia, riscos=case.riscos,
                            premissas=case.premissas, motivo=motivo.strip(), author_id=user.id))
-    audit(db, user, case.id, f"Estratégia revisada: {motivo.strip()}")
     db.commit()
     flash(request, "Estratégia atualizada e versionada.")
     return back(f"/cases/{case_id}#estrategia")
@@ -275,10 +272,8 @@ def case_strategy(
 @app.post("/cases/{case_id}/sync")
 def case_sync(case_id: int, request: Request, csrf: str = Form(""), db: Session = Depends(get_db), user: User = Depends(current_user)):
     check_csrf(request, csrf)
-    case = get_case(db, case_id)
-    res = sync_case(db, case)
-    total = res["novos"]["datajud"] + res["novos"]["djen"]
-    msg = f"Sincronização concluída: {total} andamento(s) novo(s)."
+    res = sync_case(db, get_case(db, case_id))
+    msg = f"Sincronização concluída: {sum(res['novos'].values())} andamento(s) novo(s)."
     if res["erros"]:
         msg += " Avisos: " + " | ".join(res["erros"])
     flash(request, msg)
@@ -318,7 +313,6 @@ def case_triage(case_id: int, request: Request, csrf: str = Form(""), db: Sessio
             criadas += 1
     if result.get("panorama"):
         db.add(Note(case_id=case.id, texto=f"[Triagem do assistente] {result['panorama']}", author_id=None))
-    audit(db, user, case.id, f"Triagem do assistente: {len(novos)} andamento(s), {criadas} ponto(s) de decisão aberto(s)")
     db.commit()
     flash(request, f"Triagem concluída: {len(novos)} andamento(s) analisado(s), {criadas} ponto(s) de decisão aberto(s). O panorama foi salvo nas notas.")
     return back(f"/cases/{case_id}#andamentos")
@@ -329,24 +323,57 @@ def case_triage(case_id: int, request: Request, csrf: str = Form(""), db: Sessio
 @app.post("/cases/{case_id}/movements")
 def movement_add(
     case_id: int, request: Request, csrf: str = Form(""), data: str = Form(...), titulo: str = Form(...), texto: str = Form(""),
-    db: Session = Depends(get_db), user: User = Depends(current_user),
+    link: str = Form(""), db: Session = Depends(get_db), user: User = Depends(current_user),
 ):
     check_csrf(request, csrf)
     case = get_case(db, case_id)
     d = parse_date(data) or date.today()
     db.add(Movement(case_id=case.id, fonte="manual", external_id=secrets.token_hex(8), data=datetime.combine(d, datetime.min.time()),
-                    titulo=titulo.strip()[:500], texto=texto or None, lido=True, created_by_id=user.id))
-    audit(db, user, case.id, f"Andamento manual: {titulo.strip()[:200]}")
+                    titulo=titulo.strip()[:500], texto=texto or None, link=link or None, lido=True, created_by_id=user.id))
     db.commit()
     return back(f"/cases/{case_id}#andamentos")
+
+
+@app.get("/movements/{movement_id}/edit", response_class=HTMLResponse)
+def movement_edit_page(movement_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    m = get_or_404(db, Movement, movement_id)
+    return render(request, "movement_edit.html", user, m=m, case=m.case)
+
+
+@app.post("/movements/{movement_id}/edit")
+def movement_edit(
+    movement_id: int, request: Request, csrf: str = Form(""), data: str = Form(...), titulo: str = Form(...),
+    texto: str = Form(""), link: str = Form(""), impacto: str = Form(""),
+    db: Session = Depends(get_db), user: User = Depends(current_user),
+):
+    check_csrf(request, csrf)
+    m = get_or_404(db, Movement, movement_id)
+    d = parse_date(data)
+    if d and d != m.data.date():
+        m.data = datetime.combine(d, m.data.time())
+    m.titulo, m.texto, m.link = titulo.strip()[:500], texto or None, link or None
+    m.impacto = impacto or None
+    if m.fonte != "manual":
+        m.editado = True
+    db.commit()
+    flash(request, "Andamento atualizado.")
+    return back(f"/cases/{m.case_id}#andamentos")
+
+
+@app.post("/movements/{movement_id}/delete")
+def movement_delete(movement_id: int, request: Request, csrf: str = Form(""), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    check_csrf(request, csrf)
+    m = get_or_404(db, Movement, movement_id)
+    soft_delete(m, user)
+    db.commit()
+    flash(request, "Andamento movido para a lixeira (não será reimportado pela sincronização).")
+    return back(f"/cases/{m.case_id}#andamentos")
 
 
 @app.post("/movements/{movement_id}/read")
 def movement_read(movement_id: int, request: Request, csrf: str = Form(""), db: Session = Depends(get_db), user: User = Depends(current_user)):
     check_csrf(request, csrf)
-    m = db.get(Movement, movement_id)
-    if not m:
-        raise HTTPException(404)
+    m = get_or_404(db, Movement, movement_id)
     m.lido = True
     db.commit()
     return back(f"/cases/{m.case_id}#andamentos")
@@ -358,7 +385,6 @@ def movement_read_all(case_id: int, request: Request, csrf: str = Form(""), db: 
     case = get_case(db, case_id)
     for m in case.movements:
         m.lido = True
-    audit(db, user, case.id, "Andamentos marcados como lidos")
     db.commit()
     return back(f"/cases/{case_id}#andamentos")
 
@@ -376,23 +402,58 @@ def step_add(
     db.add(NextStep(case_id=case.id, descricao=descricao.strip(), prazo=parse_date(prazo), prazo_fatal=bool(prazo_fatal),
                     responsavel_id=int(responsavel_id) if responsavel_id else None,
                     decision_id=int(decision_id) if decision_id else None, created_by_id=user.id))
-    audit(db, user, case.id, f"Próximo passo: {descricao.strip()[:200]}")
     db.commit()
     return back(request.headers.get("referer") or f"/cases/{case_id}#passos")
+
+
+@app.get("/steps/{step_id}/edit", response_class=HTMLResponse)
+def step_edit_page(step_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    s = get_or_404(db, NextStep, step_id)
+    return render(request, "step_edit.html", user, s=s, case=s.case, users=active_users(db))
+
+
+@app.post("/steps/{step_id}/edit")
+def step_edit(
+    step_id: int, request: Request, csrf: str = Form(""), descricao: str = Form(...), prazo: str = Form(""),
+    prazo_fatal: str = Form(""), responsavel_id: str = Form(""), status: str = Form("pendente"),
+    db: Session = Depends(get_db), user: User = Depends(current_user),
+):
+    check_csrf(request, csrf)
+    s = get_or_404(db, NextStep, step_id)
+    if status not in {"pendente", "concluido", "cancelado"}:
+        raise HTTPException(400)
+    s.descricao, s.prazo, s.prazo_fatal = descricao.strip(), parse_date(prazo), bool(prazo_fatal)
+    s.responsavel_id = int(responsavel_id) if responsavel_id else None
+    if s.status != status:
+        s.status = status
+        s.done_at = datetime.now() if status != "pendente" else None
+    db.commit()
+    flash(request, "Próximo passo atualizado.")
+    return back(f"/cases/{s.case_id}#passos")
 
 
 @app.post("/steps/{step_id}/status")
 def step_status(step_id: int, request: Request, csrf: str = Form(""), status: str = Form(...),
                 db: Session = Depends(get_db), user: User = Depends(current_user)):
     check_csrf(request, csrf)
-    step = db.get(NextStep, step_id)
-    if not step or status not in {"pendente", "concluido", "cancelado"}:
+    step = get_or_404(db, NextStep, step_id)
+    if status not in {"pendente", "concluido", "cancelado"}:
         raise HTTPException(400)
     step.status = status
     step.done_at = datetime.now() if status != "pendente" else None
-    audit(db, user, step.case_id, f"Passo {status}: {step.descricao[:200]}")
     db.commit()
     return back(request.headers.get("referer") or f"/cases/{step.case_id}#passos")
+
+
+@app.post("/steps/{step_id}/delete")
+def step_delete(step_id: int, request: Request, csrf: str = Form(""), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    check_csrf(request, csrf)
+    s = get_or_404(db, NextStep, step_id)
+    soft_delete(s, user)
+    db.commit()
+    flash(request, "Próximo passo movido para a lixeira.")
+    ref = request.headers.get("referer") or ""
+    return back(ref if ref and "/steps/" not in ref else f"/cases/{s.case_id}#passos")
 
 
 # ---------------------------------------------------------------- notas
@@ -407,6 +468,25 @@ def note_add(case_id: int, request: Request, csrf: str = Form(""), texto: str = 
     return back(f"/cases/{case_id}#notas")
 
 
+@app.post("/notes/{note_id}/edit")
+def note_edit(note_id: int, request: Request, csrf: str = Form(""), texto: str = Form(...),
+              db: Session = Depends(get_db), user: User = Depends(current_user)):
+    check_csrf(request, csrf)
+    n = get_or_404(db, Note, note_id)
+    n.texto = texto.strip()
+    db.commit()
+    return back(f"/cases/{n.case_id}#notas")
+
+
+@app.post("/notes/{note_id}/delete")
+def note_delete(note_id: int, request: Request, csrf: str = Form(""), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    check_csrf(request, csrf)
+    n = get_or_404(db, Note, note_id)
+    soft_delete(n, user)
+    db.commit()
+    return back(f"/cases/{n.case_id}#notas")
+
+
 # ---------------------------------------------------------------- decisões e discussão
 
 @app.post("/cases/{case_id}/decisions")
@@ -419,27 +499,49 @@ def decision_add(
     d = Decision(case_id=case.id, titulo=titulo.strip()[:300], contexto=contexto or None,
                  movement_id=int(movement_id) if movement_id else None, created_by_id=user.id)
     db.add(d)
-    db.flush()
-    audit(db, user, case.id, f"Ponto de decisão aberto: {d.titulo}")
     db.commit()
     return back(f"/decisions/{d.id}")
 
 
 def get_decision(db: Session, decision_id: int) -> Decision:
-    d = db.get(Decision, decision_id)
-    if not d:
-        raise HTTPException(404, "Decisão não encontrada")
+    d = get_or_404(db, Decision, decision_id)
+    if d.case.deleted_at is not None:
+        raise HTTPException(404, "Processo na lixeira")
     return d
 
 
 @app.get("/decisions/{decision_id}", response_class=HTMLResponse)
 def decision_page(decision_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(current_user)):
     d = get_decision(db, decision_id)
-    users = db.scalars(select(User).where(User.active.is_(True)).order_by(User.name)).all()
-    steps = db.scalars(select(NextStep).where(NextStep.decision_id == d.id)).all()
+    steps = db.scalars(select(NextStep).where(NextStep.decision_id == d.id, NextStep.deleted_at.is_(None))).all()
     suggestions = json.loads(d.sugestoes_json) if d.sugestoes_json else None
-    return render(request, "decision.html", user, d=d, case=d.case, users=users, steps=steps, suggestions=suggestions,
+    return render(request, "decision.html", user, d=d, case=d.case, users=active_users(db), steps=steps, suggestions=suggestions,
                   ai_enabled=bool(settings.anthropic_api_key))
+
+
+@app.post("/decisions/{decision_id}/edit")
+def decision_edit(
+    decision_id: int, request: Request, csrf: str = Form(""), titulo: str = Form(...), contexto: str = Form(""),
+    decisao: str = Form(""), fundamentos: str = Form(""), db: Session = Depends(get_db), user: User = Depends(current_user),
+):
+    check_csrf(request, csrf)
+    d = get_decision(db, decision_id)
+    d.titulo, d.contexto = titulo.strip()[:300], contexto or None
+    if d.status == "decidida":
+        d.decisao, d.fundamentos = decisao.strip() or d.decisao, fundamentos.strip() or None
+    db.commit()
+    flash(request, "Ponto de decisão atualizado.")
+    return back(f"/decisions/{decision_id}")
+
+
+@app.post("/decisions/{decision_id}/delete")
+def decision_delete(decision_id: int, request: Request, csrf: str = Form(""), db: Session = Depends(get_db), user: User = Depends(current_user)):
+    check_csrf(request, csrf)
+    d = get_decision(db, decision_id)
+    soft_delete(d, user)
+    db.commit()
+    flash(request, "Ponto de decisão movido para a lixeira.")
+    return back(f"/cases/{d.case_id}#decisoes")
 
 
 @app.post("/decisions/{decision_id}/messages")
@@ -458,9 +560,8 @@ def decision_message(decision_id: int, request: Request, csrf: str = Form(""), c
 def decision_assistant(decision_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(current_user)):
     check_csrf(request, request.headers.get("x-csrf-token", ""))
     d = get_decision(db, decision_id)
-    case = d.case
     try:
-        chunks = ai.stream_discussion(case, d)
+        chunks = ai.stream_discussion(d.case, d)
         first = next(chunks)  # falhas de configuração/API aparecem antes de abrir o streaming
     except StopIteration:
         first, chunks = "", iter(())
@@ -501,7 +602,6 @@ def decision_decide(
     d = get_decision(db, decision_id)
     d.decisao, d.fundamentos = decisao.strip(), fundamentos.strip() or None
     d.status, d.decided_by_id, d.decided_at = "decidida", user.id, datetime.now()
-    audit(db, user, d.case_id, f"Decisão registrada: {d.titulo}")
     db.commit()
     flash(request, "Decisão registrada. Agora registre os próximos passos (ou peça sugestões ao assistente).")
     return back(f"/decisions/{decision_id}#passos")
@@ -512,7 +612,6 @@ def decision_reopen(decision_id: int, request: Request, csrf: str = Form(""), db
     check_csrf(request, csrf)
     d = get_decision(db, decision_id)
     d.status = "aberta"
-    audit(db, user, d.case_id, f"Decisão reaberta: {d.titulo}")
     db.commit()
     return back(f"/decisions/{decision_id}")
 
@@ -547,51 +646,20 @@ async def decision_steps_bulk(decision_id: int, request: Request, db: Session = 
                         responsavel_id=int(str(form.get(f"resp_{idx}"))) if form.get(f"resp_{idx}") else None))
         count += 1
     d.sugestoes_json = None
-    audit(db, user, d.case_id, f"{count} próximo(s) passo(s) criados a partir da decisão \"{d.titulo}\"")
     db.commit()
     flash(request, f"{count} passo(s) adicionados.")
     return back(f"/decisions/{decision_id}#passos")
 
 
-# ---------------------------------------------------------------- equipe
-
-@app.get("/users", response_class=HTMLResponse)
-def users_page(request: Request, db: Session = Depends(get_db), user: User = Depends(admin_user)):
-    return render(request, "users.html", user, users=db.scalars(select(User).order_by(User.name)).all())
-
-
-@app.post("/users")
-def users_create(
-    request: Request, csrf: str = Form(""), name: str = Form(...), email: str = Form(...), oab: str = Form(""),
-    password: str = Form(...), is_admin: str = Form(""), db: Session = Depends(get_db), user: User = Depends(admin_user),
-):
-    check_csrf(request, csrf)
-    if len(password) < 10:
-        flash(request, "A senha deve ter ao menos 10 caracteres.")
-        return back("/users")
-    if db.scalar(select(User.id).where(User.email == email.strip().lower())):
-        flash(request, "Já existe um usuário com este e-mail.")
-        return back("/users")
-    db.add(User(name=name.strip(), email=email.strip().lower(), oab=oab or None, password_hash=hash_password(password), is_admin=bool(is_admin)))
-    audit(db, user, None, f"Usuário criado: {email.strip().lower()}")
-    db.commit()
-    return back("/users")
-
-
-@app.post("/users/{uid}/toggle")
-def users_toggle(uid: int, request: Request, csrf: str = Form(""), db: Session = Depends(get_db), user: User = Depends(admin_user)):
-    check_csrf(request, csrf)
-    target = db.get(User, uid)
-    if target and target.id != user.id:
-        target.active = not target.active
-        audit(db, user, None, f"Usuário {'ativado' if target.active else 'desativado'}: {target.email}")
-        db.commit()
-    return back("/users")
-
+# ---------------------------------------------------------------- conta
 
 @app.get("/account", response_class=HTMLResponse)
-def account_page(request: Request, user: User = Depends(current_user)):
-    return render(request, "account.html", user)
+def account_page(request: Request, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    from .models import PjeCredential, PjeEndpoint
+
+    endpoints = db.scalars(select(PjeEndpoint).where(PjeEndpoint.ativo.is_(True)).order_by(PjeEndpoint.tribunal, PjeEndpoint.instancia)).all()
+    creds = db.scalars(select(PjeCredential).where(PjeCredential.user_id == user.id)).all()
+    return render(request, "account.html", user, endpoints=endpoints, creds=creds, crypto_ok=bool(settings.credentials_key))
 
 
 @app.post("/account/password")

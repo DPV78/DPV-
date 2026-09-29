@@ -1,0 +1,3 @@
+mni-tjmg-avisos-senha-invalida.txt: resposta real (MTOM) do MNI 2.2.3 do TJMG a uma consulta de avisos com
+senha inválida, publicada no projeto aberto github.com/araujodgdev/lume-os. Usada para validar o parser.
+As demais respostas dos testes são sintéticas, montadas conforme os esquemas do MNI 2.2.x.

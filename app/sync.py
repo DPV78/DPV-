@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 from .cnj import digits
 from .config import settings
 from .integrations import datajud, djen
-from .models import AuditLog, Case, Movement
+from . import audit, pje_service
+from .models import Case, Movement
 
 log = logging.getLogger("sync")
 
@@ -29,8 +30,15 @@ def _upsert(db: Session, case: Case, fonte: str, external_id: str, data: datetim
 
 def sync_case(db: Session, case: Case, *, datajud_client=None, djen_client=None) -> dict:
     """Busca novidades de um processo. Retorna contagem de novos andamentos por fonte e erros."""
-    novos = {"datajud": 0, "djen": 0}
+    novos = {"pje": 0, "datajud": 0, "djen": 0}
     erros = []
+
+    try:
+        novos["pje"], erros_pje = pje_service.sync_case_movements(db, case)
+        erros += erros_pje
+    except Exception as e:  # falha no PJe não impede as demais fontes
+        log.exception("Falha no MNI para %s", case.numero_cnj)
+        erros.append(f"PJe: {type(e).__name__}")
 
     if settings.datajud_api_key:
         try:
@@ -57,10 +65,10 @@ def sync_case(db: Session, case: Case, *, datajud_client=None, djen_client=None)
         erros.append(str(e))
 
     case.last_sync_at = datetime.now()
-    total = novos["datajud"] + novos["djen"]
+    total = sum(novos.values())
     case.last_sync_status = (f"{total} novo(s)" + (" · " + " | ".join(erros) if erros else ""))[:300]
-    if total:
-        db.add(AuditLog(case_id=case.id, acao=f"Sincronização: {novos['datajud']} DataJud, {novos['djen']} DJEN"))
+    audit.log(db, f"Sincronização: {novos['pje']} PJe, {novos['datajud']} DataJud, {novos['djen']} DJEN"
+              + (f" — avisos: {' | '.join(erros)}" if erros else ""), tipo="sincronizar", case_id=case.id)
     db.commit()
     return {"novos": novos, "erros": erros}
 
@@ -69,7 +77,7 @@ def sync_oab_publications(db: Session, *, days: int = 3, client=None) -> dict:
     """Varre o DJEN pelas OABs configuradas e vincula publicações aos processos da carteira."""
     if not settings.djen_oabs:
         return {"vinculadas": 0, "fora_da_carteira": []}
-    cases = {digits(c.numero_cnj): c for c in db.scalars(select(Case)).all()}
+    cases = {digits(c.numero_cnj): c for c in db.scalars(select(Case).where(Case.deleted_at.is_(None))).all()}
     vinculadas, fora = 0, set()
     for oab in settings.djen_oabs:
         items = djen.fetch(oab=oab, inicio=date.today() - timedelta(days=days), fim=date.today(), client=client)
@@ -87,7 +95,7 @@ def sync_oab_publications(db: Session, *, days: int = 3, client=None) -> dict:
 def sync_all(session_factory) -> None:
     db = session_factory()
     try:
-        for case in db.scalars(select(Case).where(Case.status == "ativo")).all():
+        for case in db.scalars(select(Case).where(Case.status == "ativo", Case.deleted_at.is_(None))).all():
             try:
                 sync_case(db, case)
             except Exception:  # um processo com erro não interrompe os demais
@@ -98,5 +106,16 @@ def sync_all(session_factory) -> None:
         except Exception:
             log.exception("Falha na varredura por OAB")
             db.rollback()
+    finally:
+        db.close()
+
+
+def check_avisos_job(session_factory) -> None:
+    db = session_factory()
+    try:
+        pje_service.check_avisos(db)
+    except Exception:
+        log.exception("Falha na consulta de intimações do PJe")
+        db.rollback()
     finally:
         db.close()

@@ -33,6 +33,14 @@ class Settings:
     djen_date_format: str = os.getenv("DJEN_DATE_FORMAT", "iso")
 
     sync_interval_hours: float = float(os.getenv("SYNC_INTERVAL_HOURS", "6"))
+    avisos_interval_hours: float = float(os.getenv("AVISOS_INTERVAL_HOURS", "2"))
+
+    # Chave Fernet para criptografar as credenciais do PJe (gere com: python -m app.crypto)
+    credentials_key: str = os.getenv("CREDENTIALS_KEY", "")
+    # Em rede local sem HTTPS, deixe false; com HTTPS (proxy reverso), use true
+    session_https_only: bool = os.getenv("SESSION_HTTPS_ONLY", "false").lower() == "true"
+    # Pasta para documentos baixados do PJe e backups
+    data_dir: str = os.getenv("DATA_DIR", "./dados")
 
     admin_email: str = os.getenv("ADMIN_EMAIL", "")
     admin_password: str = os.getenv("ADMIN_PASSWORD", "")

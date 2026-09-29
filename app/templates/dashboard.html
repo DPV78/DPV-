@@ -1,6 +1,21 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Painel da carteira</h1>
+{% if avisos %}
+<section class="card alert-card">
+  <h2>Intimações pendentes no PJe ({{ avisos|length }})</h2>
+  <p class="small muted">Listadas sem registrar ciência. Abrir o teor registra a ciência no PJe e pode iniciar o prazo.</p>
+  <ul class="list">
+    {% for a in avisos[:10] %}
+    <li><strong>{{ a.data_disponibilizacao|dt if a.data_disponibilizacao else '—' }}</strong>
+      <span class="tag">{{ a.tipo_comunicacao or 'comunicação' }}</span>
+      <a href="/pje/avisos/{{ a.id }}">{{ a.case.titulo if a.case else a.numero_processo }}</a>
+      <span class="muted small">{{ a.endpoint.tribunal|upper }} {{ a.endpoint.instancia }}{% if not a.case %} · fora da carteira{% endif %}</span></li>
+    {% endfor %}
+  </ul>
+  {% if avisos|length > 10 %}<a href="/pje">Ver todas</a>{% endif %}
+</section>
+{% endif %}
 <div class="grid2">
   <section class="card">
     <h2>Prazos nos próximos 15 dias</h2>

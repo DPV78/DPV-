@@ -9,7 +9,14 @@
     <tr class="{% if not u.active %}dim{% endif %}">
       <td>{{ u.name }}</td><td>{{ u.email }}</td><td>{{ u.oab or '—' }}</td><td>{{ 'administrador' if u.is_admin else 'advogado' }}</td>
       <td>{{ 'ativo' if u.active else 'inativo' }}</td>
-      <td>{% if u.id != user.id %}<form method="post" action="/users/{{ u.id }}/toggle" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small">{{ 'Desativar' if u.active else 'Ativar' }}</button></form>{% endif %}</td>
+      <td class="nowrap">{% if u.id != user.id %}
+        <form method="post" action="/users/{{ u.id }}/toggle" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small">{{ 'Desativar' if u.active else 'Ativar' }}</button></form>
+        <form method="post" action="/users/{{ u.id }}/admin" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small">{{ 'Remover admin' if u.is_admin else 'Tornar admin' }}</button></form>
+        {% endif %}
+        <details class="inline-details"><summary class="small">Redefinir senha</summary>
+          <form method="post" action="/users/{{ u.id }}/reset" class="row"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="password" name="password" minlength="10" required placeholder="Nova senha"><button class="small">Salvar</button></form>
+        </details>
+      </td>
     </tr>
     {% endfor %}
     </tbody>

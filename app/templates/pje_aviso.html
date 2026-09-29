@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Intimação {{ aviso.numero_processo }}{% endblock %}
+{% block content %}
+<p><a href="/pje">← Intimações do PJe</a></p>
+<h1>{{ aviso.tipo_comunicacao or 'Comunicação' }} — {{ aviso.numero_processo }}</h1>
+<section class="card">
+  <p><strong>Tribunal:</strong> {{ aviso.endpoint.tribunal|upper }} {{ aviso.endpoint.instancia }} · <strong>Órgão:</strong> {{ aviso.orgao or '—' }}</p>
+  <p><strong>Disponibilizada em:</strong> {{ aviso.data_disponibilizacao|dt if aviso.data_disponibilizacao else '—' }} · <strong>Destinatário:</strong> {{ aviso.destinatario or '—' }}</p>
+  <p><strong>Processo na carteira:</strong> {% if aviso.case %}<a href="/cases/{{ aviso.case.id }}">{{ aviso.case.titulo }}</a>{% else %}não vinculado{% endif %}</p>
+  {% if not aviso.case and cases %}
+  <form method="post" action="/pje/avisos/{{ aviso.id }}/vincular" class="row">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <select name="case_id">{% for c in cases %}<option value="{{ c.id }}">{{ c.titulo }} ({{ c.numero_cnj }})</option>{% endfor %}</select>
+    <button class="small">Vincular a um processo</button>
+  </form>
+  {% endif %}
+</section>
+
+{% if aviso.status == 'aberto' %}
+<section class="card">
+  <h2>Teor</h2>
+  <p class="small muted">Ciência registrada no PJe em {{ aviso.opened_at|dt }} por {{ aviso.opened_by.name if aviso.opened_by else '—' }}.
+    {% if aviso.prazo_dias %}Prazo informado pelo tribunal: <strong>{{ aviso.prazo_dias }} dia(s){% if aviso.tipo_prazo %} ({{ aviso.tipo_prazo }}){% endif %}</strong>. Confira o termo inicial e a contagem nos autos.{% endif %}</p>
+  <div class="prose">{{ aviso.teor or '(o tribunal não devolveu texto)' }}</div>
+  {% if aviso.documents %}
+  <h3>Documentos</h3>
+  <ul class="list small">{% for d in aviso.documents %}<li><a href="/documentos/{{ d.id }}" target="_blank" rel="noopener">{{ d.descricao }}</a></li>{% endfor %}</ul>
+  {% endif %}
+  {% if aviso.case %}<p><a class="button" href="/cases/{{ aviso.case.id }}#passos">Registrar próximo passo / prazo</a></p>{% endif %}
+</section>
+{% elif aviso.status == 'pendente' %}
+<section class="card danger-zone">
+  <h2>Abrir o teor e registrar ciência</h2>
+  <p><strong>Atenção:</strong> ao abrir o teor por aqui, o PJe registra que <strong>você</strong> tomou ciência da intimação nesta data e hora. Isso pode iniciar a contagem do prazo. Se preferir, abra pelo próprio PJe; esta intimação sairá da lista na próxima consulta.</p>
+  {% if has_cred %}
+  <form method="post" action="/pje/avisos/{{ aviso.id }}/abrir" class="row">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input name="confirmacao" required placeholder="Digite {{ confirm_word }} para confirmar" autocomplete="off">
+    <button class="danger">Abrir teor e registrar ciência</button>
+  </form>
+  {% else %}
+  <p class="muted">Você não tem credencial do PJe cadastrada para este tribunal e instância. Cadastre em <a href="/account#pje">Minha conta</a>. A ciência é sempre registrada em nome de quem abre.</p>
+  {% endif %}
+</section>
+{% else %}
+<section class="card"><p>Esta intimação saiu da lista de pendentes do PJe (provavelmente foi aberta diretamente no PJe ou teve a ciência registrada por decurso de prazo). Consulte os autos.</p></section>
+{% endif %}
+{% endblock %}

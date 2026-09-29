@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Intimações PJe{% endblock %}
+{% block content %}
+<div class="row between">
+  <h1>Intimações do PJe</h1>
+  <form method="post" action="/pje/check" data-busy="Consultando o PJe…"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="primary">Consultar agora</button></form>
+</div>
+<section class="card alert-card">
+  <p><strong>Como funciona:</strong> o aplicativo consulta as intimações pendentes com a credencial de cada advogado, <strong>sem registrar ciência</strong>. Abrir o teor por aqui <strong>registra a ciência no PJe em nome de quem abrir</strong> e pode iniciar a contagem do prazo. Esse ato exige confirmação e fica na auditoria.</p>
+</section>
+<p>{% for st, label in [('pendente','Pendentes'),('aberto','Abertas por aqui'),('fora_do_pje','Saíram da lista do PJe'),('todos','Todas')] %}
+  <a href="/pje?status={{ st }}" class="{% if status == st %}active{% endif %}">{{ label }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</p>
+<section class="card">
+  {% if avisos %}
+  <table>
+    <thead><tr><th>Disponibilização</th><th>Processo</th><th>Tipo</th><th>Órgão</th><th>Tribunal</th><th>Situação</th><th></th></tr></thead>
+    <tbody>
+    {% for a in avisos %}
+    <tr>
+      <td>{{ a.data_disponibilizacao|dt if a.data_disponibilizacao else '—' }}</td>
+      <td>{% if a.case %}<a href="/cases/{{ a.case.id }}#pje">{{ a.case.titulo }}</a><br>{% endif %}<span class="mono small">{{ a.numero_processo }}</span>{% if not a.case %} <span class="tag">fora da carteira</span>{% endif %}</td>
+      <td>{{ a.tipo_comunicacao or '—' }}</td>
+      <td class="small">{{ a.orgao or '—' }}{% if a.destinatario %}<br><span class="muted">Destinatário: {{ a.destinatario }}</span>{% endif %}</td>
+      <td>{{ a.endpoint.tribunal|upper }} {{ a.endpoint.instancia }}</td>
+      <td>{{ a.status.replace('_',' ') }}{% if a.opened_at %}<br><span class="small muted">{{ a.opened_at|dt }} · {{ a.opened_by.name if a.opened_by else '' }}</span>{% endif %}</td>
+      <td><a class="button small-btn" href="/pje/avisos/{{ a.id }}">Abrir</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted">Nenhuma intimação nesta situação.</p>{% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Editar próximo passo{% endblock %}
+{% block content %}
+<p><a href="/cases/{{ case.id }}#passos">← {{ case.titulo }}</a></p>
+<h1>Editar próximo passo</h1>
+<section class="card">
+  <form method="post" action="/steps/{{ s.id }}/edit" class="stack">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Descrição <textarea name="descricao" rows="3" required>{{ s.descricao }}</textarea></label>
+    <div class="row">
+      <label>Prazo <input type="date" name="prazo" value="{{ s.prazo.isoformat() if s.prazo else '' }}"></label>
+      <label class="check"><input type="checkbox" name="prazo_fatal" value="1" {% if s.prazo_fatal %}checked{% endif %}> prazo fatal</label>
+      <label>Responsável
+        <select name="responsavel_id"><option value="">—</option>{% for u in users %}<option value="{{ u.id }}" {% if s.responsavel_id == u.id %}selected{% endif %}>{{ u.name }}</option>{% endfor %}</select>
+      </label>
+      <label>Situação
+        <select name="status">{% for st in ['pendente','concluido','cancelado'] %}<option {% if s.status == st %}selected{% endif %}>{{ st }}</option>{% endfor %}</select>
+      </label>
+    </div>
+    <div><button class="primary">Salvar</button> <a href="/cases/{{ case.id }}#passos">Cancelar</a></div>
+  </form>
+  <form method="post" action="/steps/{{ s.id }}/delete" onsubmit="return confirm('Excluir este passo?')">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><button class="small danger-link">Excluir passo</button>
+  </form>
+</section>
+{% endblock %}

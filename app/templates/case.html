@@ -18,7 +18,7 @@
 </div>
 
 <nav class="tabs">
-  <a href="#estrategia">Estratégia</a><a href="#decisoes">Decisões</a><a href="#passos">Próximos passos</a><a href="#andamentos">Andamentos</a><a href="#notas">Notas</a><a href="#historico">Histórico</a>
+  <a href="#estrategia">Estratégia</a><a href="#decisoes">Decisões</a><a href="#passos">Próximos passos</a><a href="#andamentos">Andamentos</a><a href="#pje">PJe</a><a href="#notas">Notas</a><a href="#historico">Histórico</a>
 </nav>
 
 <section class="card" id="estrategia">
@@ -94,9 +94,9 @@
       <td>{{ s.descricao }}</td>
       <td>{{ s.responsavel.name if s.responsavel else '—' }}</td>
       <td class="nowrap">
-        {% for st, label in [('concluido','Concluir'),('cancelado','Cancelar')] %}
-        <form method="post" action="/steps/{{ s.id }}/status" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="status" value="{{ st }}"><button class="small">{{ label }}</button></form>
-        {% endfor %}
+        <form method="post" action="/steps/{{ s.id }}/status" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="status" value="concluido"><button class="small">Concluir</button></form>
+        <a class="button small-btn" href="/steps/{{ s.id }}/edit">Editar</a>
+        <form method="post" action="/steps/{{ s.id }}/delete" class="inline" onsubmit="return confirm('Excluir este passo?')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small danger-link">Excluir</button></form>
       </td>
     </tr>
     {% endfor %}
@@ -113,7 +113,7 @@
   </form>
   {% if done %}
   <details><summary>Concluídos/cancelados ({{ done|length }})</summary>
-    <ul class="list small">{% for s in done %}<li><span class="tag">{{ s.status }}</span> {{ s.descricao }} <span class="muted">{{ s.done_at|dt if s.done_at else '' }}</span></li>{% endfor %}</ul>
+    <ul class="list small">{% for s in done %}<li><span class="tag">{{ s.status }}</span> {{ s.descricao }} <span class="muted">{{ s.done_at|dt if s.done_at else '' }}</span> <a href="/steps/{{ s.id }}/edit">editar/reabrir</a></li>{% endfor %}</ul>
   </details>
   {% endif %}
 </section>
@@ -129,6 +129,7 @@
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <div class="row"><input type="date" name="data" required><input name="titulo" required placeholder="Resumo" class="grow"></div>
       <textarea name="texto" rows="4" placeholder="Íntegra ou detalhes (opcional)"></textarea>
+      <input name="link" placeholder="Link (opcional)">
       <button>Registrar</button>
     </form>
   </details>
@@ -136,8 +137,10 @@
     {% for m in case.movements %}
     <li class="{% if not m.lido %}unread{% endif %}">
       <div class="row between">
-        <div><strong>{{ m.data|dt }}</strong> <span class="tag">{{ m.fonte }}</span>{% if m.impacto %} <span class="tag impact-{{ m.impacto }}">impacto {{ m.impacto }}</span>{% endif %} {{ m.titulo }}</div>
+        <div><strong>{{ m.data|dt }}</strong> <span class="tag">{{ m.fonte }}</span>{% if m.editado %} <span class="tag">editado</span>{% endif %}{% if m.impacto %} <span class="tag impact-{{ m.impacto }}">impacto {{ m.impacto }}</span>{% endif %} {{ m.titulo }}</div>
         <div class="nowrap">
+          <a class="button small-btn" href="/movements/{{ m.id }}/edit">Editar</a>
+          <form method="post" action="/movements/{{ m.id }}/delete" class="inline" onsubmit="return confirm('Excluir este andamento?')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small danger-link">Excluir</button></form>
           {% if not m.lido %}<form method="post" action="/movements/{{ m.id }}/read" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small">Lido</button></form>{% endif %}
           <form method="post" action="/cases/{{ case.id }}/decisions" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="movement_id" value="{{ m.id }}"><input type="hidden" name="titulo" value="O que fazer diante de: {{ m.titulo[:200] }}"><button class="small">Discutir decisão</button></form>
         </div>
@@ -152,6 +155,29 @@
   </ul>
 </section>
 
+<section class="card" id="pje">
+  <div class="row between">
+    <h2>PJe</h2>
+    <a class="button" href="/cases/{{ case.id }}/pje/documentos">Listar peças do processo no PJe</a>
+  </div>
+  <h3>Intimações</h3>
+  {% if avisos %}
+  <ul class="list">
+    {% for a in avisos %}
+    <li><span class="tag {{ 'red' if a.status == 'pendente' else '' }}">{{ a.status.replace('_', ' ') }}</span>
+      <strong>{{ a.data_disponibilizacao|dt if a.data_disponibilizacao else '—' }}</strong> {{ a.tipo_comunicacao or 'comunicação' }}
+      · {{ a.endpoint.tribunal|upper }} {{ a.endpoint.instancia }} <a href="/pje/avisos/{{ a.id }}">detalhes</a>
+      {% if a.opened_at %}<span class="muted small">— ciência em {{ a.opened_at|dt }} por {{ a.opened_by.name if a.opened_by else '—' }}{% if a.prazo_dias %}; prazo informado: {{ a.prazo_dias }} dia(s){% endif %}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="muted small">Nenhuma intimação recebida pelo PJe para este processo.</p>{% endif %}
+  <h3>Documentos baixados</h3>
+  {% if docs %}
+  <ul class="list small">{% for d in docs %}<li><a href="/documentos/{{ d.id }}" target="_blank" rel="noopener">{{ d.descricao }}</a> <span class="muted">{{ d.created_at|dt }}</span></li>{% endfor %}</ul>
+  {% else %}<p class="muted small">Nenhum documento baixado.</p>{% endif %}
+</section>
+
 <section class="card" id="notas">
   <h2>Notas da equipe</h2>
   <form method="post" action="/cases/{{ case.id }}/notes" class="stack">
@@ -160,14 +186,18 @@
     <button>Salvar nota</button>
   </form>
   <ul class="list">
-    {% for n in case.notes %}<li><strong>{{ n.author.name if n.author else 'Assistente' }}</strong> <span class="muted small">{{ n.created_at|dt }}</span><div class="prose">{{ n.texto }}</div></li>{% endfor %}
+    {% for n in case.notes %}<li><strong>{{ n.author.name if n.author else 'Assistente' }}</strong> <span class="muted small">{{ n.created_at|dt }}</span><div class="prose">{{ n.texto }}</div>
+      <details><summary>Editar / excluir</summary>
+        <form method="post" action="/notes/{{ n.id }}/edit" class="stack"><input type="hidden" name="csrf" value="{{ csrf }}"><textarea name="texto" rows="3" required>{{ n.texto }}</textarea><button class="small">Salvar</button></form>
+        <form method="post" action="/notes/{{ n.id }}/delete" onsubmit="return confirm('Excluir esta nota?')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small danger-link">Excluir nota</button></form>
+      </details></li>{% endfor %}
   </ul>
 </section>
 
 <section class="card" id="historico">
   <h2>Histórico de atividades</h2>
   <ul class="list small">
-    {% for l in logs %}<li><span class="muted">{{ l.created_at|dt }}</span> {{ l.user.name if l.user else 'Sistema' }} — {{ l.acao }}</li>{% endfor %}
+    {% for l in logs %}<li><span class="muted">{{ l.created_at|dt }}</span> {{ l.user_name or 'Sistema' }} — {{ l.acao }}</li>{% endfor %}
   </ul>
 </section>
 {% endblock %}

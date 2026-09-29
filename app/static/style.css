@@ -1,11 +1,6 @@
 /* Identidade visual Nogueira Vasconcelos — conforme Manual de Marca.
    Paleta institucional: #2e2e2d (grafite) · #6f7b63 (sálvia) · #ccc4b8 (areia) · #f1f5f0 (gelo).
    Tipografia: Boston Angel Bold (primária, caixa alta) · Lato (secundária). */
-@font-face {
-  font-family: "Boston Angel";
-  src: url("/static/fonts/BostonAngel-Bold.woff2") format("woff2");
-  font-weight: 700; font-display: swap;
-}
 :root {
   --nv-grafite: #2e2e2d; --nv-salvia: #6f7b63; --nv-areia: #ccc4b8; --nv-gelo: #f1f5f0;
   --bg: var(--nv-gelo); --surface: #ffffff; --text: var(--nv-grafite); --muted: #5f5f5c;
@@ -123,3 +118,21 @@ summary { cursor: pointer; color: var(--accent); font-size: .75rem; font-weight:
 .login-wrap .logo { width: min(340px, 80vw); height: auto; color: var(--accent-strong); }
 .login-wrap .card { width: min(420px, 100%); }
 .eyebrow { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .22em; color: var(--muted); text-align: center; }
+
+/* menus, zonas de risco, auditoria */
+details.menu { position: relative; margin: 0; }
+details.menu summary { color: var(--nv-gelo); font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .16em; list-style: none; }
+details.menu summary::-webkit-details-marker { display: none; }
+details.menu .menu-items { position: absolute; right: 0; top: 1.8rem; background: var(--nv-grafite); border: 1px solid #4a4a47; padding: .6rem .9rem; display: flex; flex-direction: column; gap: .6rem; z-index: 10; min-width: 200px; }
+details.menu .menu-items a { margin: 0; }
+button.danger { background: var(--alert); border-color: var(--alert); color: #fff; }
+button.danger:hover { background: var(--nv-grafite); border-color: var(--nv-grafite); color: var(--nv-gelo); }
+button.danger-link { border-color: transparent; background: none; color: var(--alert); }
+button.danger-link:hover { border-color: var(--alert); color: var(--alert); }
+.button.small-btn { padding: .25rem .55rem; font-size: .68rem; }
+.danger-zone { border-color: var(--alert); }
+.alert-card { border-left: 4px solid var(--alert); }
+.inline-details { display: inline-block; margin: 0 0 0 .3rem; vertical-align: middle; }
+table.diff { width: 100%; margin-top: .4rem; }
+table.diff td, table.diff th { padding: .25rem .4rem; }
+table.audit td { font-size: .9rem; }

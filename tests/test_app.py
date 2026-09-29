@@ -90,8 +90,8 @@ def test_sync_dedup():
         dn = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, json=DJEN_PAYLOAD)))
         first = sync_case(db, case, datajud_client=dj, djen_client=dn)
         second = sync_case(db, case, datajud_client=dj, djen_client=dn)
-        assert first["novos"] == {"datajud": 2, "djen": 1}
-        assert second["novos"] == {"datajud": 0, "djen": 0}
+        assert first["novos"] == {"pje": 0, "datajud": 2, "djen": 1}
+        assert second["novos"] == {"pje": 0, "datajud": 0, "djen": 0}
         assert db.query(Movement).filter_by(case_id=case.id, fonte="datajud").count() == 2
         assert case.classe == "Procedimento Comum Cível"
 

@@ -63,7 +63,7 @@
     <section class="card" id="passos">
       <h2>Próximos passos</h2>
       {% if steps %}
-      <ul class="list small">{% for s in steps %}<li><span class="tag">{{ s.status }}</span> {{ s.descricao }}{% if s.prazo %} — <strong>{{ s.prazo|dt }}</strong>{% endif %}</li>{% endfor %}</ul>
+      <ul class="list small">{% for s in steps %}<li><span class="tag">{{ s.status }}</span> {{ s.descricao }}{% if s.prazo %} — <strong>{{ s.prazo|dt }}</strong>{% endif %} <a href="/steps/{{ s.id }}/edit">editar</a></li>{% endfor %}</ul>
       {% endif %}
       {% if ai_enabled %}
       <form method="post" action="/decisions/{{ d.id }}/suggest-steps" data-busy="Gerando sugestões…"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small">Sugerir passos com o assistente</button></form>
@@ -97,6 +97,25 @@
         </div>
         <button class="small">Adicionar passo</button>
       </form>
+    </section>
+
+    <section class="card">
+      <details>
+        <summary>Editar ou excluir este ponto de decisão</summary>
+        <form method="post" action="/decisions/{{ d.id }}/edit" class="stack">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <label>Título <input name="titulo" value="{{ d.titulo }}" required></label>
+          <label>Contexto <textarea name="contexto" rows="3">{{ d.contexto or '' }}</textarea></label>
+          {% if d.status == 'decidida' %}
+          <label>Decisão <textarea name="decisao" rows="3">{{ d.decisao or '' }}</textarea></label>
+          <label>Fundamentos <textarea name="fundamentos" rows="3">{{ d.fundamentos or '' }}</textarea></label>
+          {% endif %}
+          <button class="small">Salvar alterações</button>
+        </form>
+        <form method="post" action="/decisions/{{ d.id }}/delete" onsubmit="return confirm('Excluir este ponto de decisão?')">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><button class="small danger-link">Excluir ponto de decisão</button>
+        </form>
+      </details>
     </section>
 
     <section class="card">

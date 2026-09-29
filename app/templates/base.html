@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,400;0,700;1,400&display=swap">
   <link rel="stylesheet" href="/static/style.css">
+  {% if brand_font %}<style>@font-face { font-family: "Boston Angel"; src: url("/static/fonts/BostonAngel-Bold.woff2") format("woff2"); font-weight: 700; font-display: swap; }</style>{% endif %}
 </head>
 <body>
 {% if user %}
@@ -17,8 +18,19 @@
   <nav>
     <a href="/">Painel</a>
     <a href="/agenda">Agenda</a>
+    <a href="/pje">Intimações PJe</a>
     <a href="/cases/new">Novo processo</a>
-    {% if user.is_admin %}<a href="/users">Equipe</a>{% endif %}
+    {% if user.is_admin %}
+    <details class="menu">
+      <summary>Administração</summary>
+      <div class="menu-items">
+        <a href="/users">Equipe</a>
+        <a href="/admin/pje">Endereços do PJe</a>
+        <a href="/admin/auditoria">Auditoria</a>
+        <a href="/admin/lixeira">Lixeira</a>
+      </div>
+    </details>
+    {% endif %}
     <a href="/account">{{ user.name }}</a>
     <form method="post" action="/logout" class="inline"><button class="link">Sair</button></form>
   </nav>

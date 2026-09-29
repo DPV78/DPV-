@@ -1,0 +1,15 @@
+# Serviço systemd (Linux). Ajuste User e WorkingDirectory, copie para /etc/systemd/system/ e rode:
+#   sudo systemctl daemon-reload && sudo systemctl enable --now carteira
+[Unit]
+Description=Carteira Estrategica - Nogueira Vasconcelos
+After=network-online.target
+
+[Service]
+User=carteira
+WorkingDirectory=/opt/carteira
+ExecStart=/opt/carteira/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

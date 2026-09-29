@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Editar andamento{% endblock %}
+{% block content %}
+<p><a href="/cases/{{ case.id }}#andamentos">← {{ case.titulo }}</a></p>
+<h1>Editar andamento</h1>
+<section class="card">
+  {% if m.fonte != 'manual' %}<p class="small muted">Andamento importado ({{ m.fonte }}). A edição fica marcada e registrada na auditoria com o conteúdo original; a sincronização não sobrescreve.</p>{% endif %}
+  <form method="post" action="/movements/{{ m.id }}/edit" class="stack">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="row">
+      <label>Data <input type="date" name="data" value="{{ m.data.date().isoformat() }}" required></label>
+      <label>Impacto
+        <select name="impacto"><option value="">—</option>{% for i in ['alto','medio','baixo'] %}<option {% if m.impacto == i %}selected{% endif %}>{{ i }}</option>{% endfor %}</select>
+      </label>
+    </div>
+    <label>Título <input name="titulo" value="{{ m.titulo }}" required></label>
+    <label>Texto <textarea name="texto" rows="10">{{ m.texto or '' }}</textarea></label>
+    <label>Link <input name="link" value="{{ m.link or '' }}"></label>
+    <div><button class="primary">Salvar</button> <a href="/cases/{{ case.id }}#andamentos">Cancelar</a></div>
+  </form>
+</section>
+{% endblock %}

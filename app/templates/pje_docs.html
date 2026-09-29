@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Peças no PJe{% endblock %}
+{% block content %}
+<p><a href="/cases/{{ case.id }}#pje">← {{ case.titulo }}</a></p>
+<h1>Peças do processo no PJe</h1>
+<section class="card">
+  <p class="small muted">Baixar uma peça fica registrado na auditoria. Se a peça estiver ligada a uma intimação pendente, confira no PJe se o tribunal trata o acesso como ciência antes de baixar.</p>
+  {% if docs %}
+  <table>
+    <thead><tr><th>Data</th><th>Documento</th><th>Tipo</th><th></th></tr></thead>
+    <tbody>
+    {% for d in docs %}
+    <tr>
+      <td>{{ d.data|dt if d.data else '—' }}</td>
+      <td>{{ d.descricao }} <span class="muted small mono">{{ d.id_documento }}</span></td>
+      <td class="small">{{ d.mimetype }}</td>
+      <td>{% if d.id_documento in baixados %}<span class="tag green">baixado</span>{% elif d.id_documento %}
+        <form method="post" action="/cases/{{ case.id }}/pje/documentos/{{ d.id_documento }}" data-busy="Baixando…"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small">Baixar</button></form>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted">O tribunal não devolveu a lista de peças.</p>{% endif %}
+</section>
+{% endblock %}

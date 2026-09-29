@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Endereços do PJe{% endblock %}
+{% block content %}
+<h1>Endereços do PJe (MNI)</h1>
+<section class="card">
+  <p class="small muted">Cada tribunal e instância tem seu próprio endereço do webservice MNI. Obtenha o endereço oficial com o tribunal (em geral termina em <span class="mono">/intercomunicacao</span>; o WSDL fica em <span class="mono">…?wsdl</span>). Nem todo PJe libera o MNI para advogados. O "tribunal" deve ser o mesmo alias usado no cadastro do processo (ex.: tjmg, trt3, trf1).</p>
+  {% if endpoints %}
+  <table>
+    <thead><tr><th>Tribunal</th><th>Instância</th><th>Endereço</th><th>Versão</th><th>Credenciais</th><th>Situação</th><th></th></tr></thead>
+    <tbody>
+    {% for e in endpoints %}
+    {% set ec = creds|selectattr('endpoint_id', 'equalto', e.id)|list %}
+    <tr class="{% if not e.ativo %}dim{% endif %}">
+      <td>{{ e.tribunal|upper }}</td><td>{{ e.instancia }}</td><td class="mono small">{{ e.url }}</td><td>{{ e.versao_mni }}</td>
+      <td class="small">{% for c in ec %}{{ c.user.name }}{% if not c.ativo %} (suspensa){% endif %}{% if not loop.last %}, {% endif %}{% else %}—{% endfor %}</td>
+      <td>{{ 'ativo' if e.ativo else 'inativo' }}</td>
+      <td><form method="post" action="/admin/pje/{{ e.id }}/toggle"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small">{{ 'Desativar' if e.ativo else 'Ativar' }}</button></form></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted">Nenhum endereço cadastrado.</p>{% endif %}
+</section>
+<section class="card narrow">
+  <h2>Adicionar endereço</h2>
+  <form method="post" action="/admin/pje" class="stack">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Tribunal (alias) <input name="tribunal" required placeholder="tjmg"></label>
+    <label>Instância <input name="instancia" value="1g" placeholder="1g, 2g…"></label>
+    <label>Endereço do MNI <input name="url" required placeholder="https://pje.tjmg.jus.br/pje/intercomunicacao"></label>
+    <label>Versão do MNI <select name="versao_mni"><option>2.2.2</option><option>2.2.3</option></select></label>
+    <button class="primary">Adicionar</button>
+  </form>
+</section>
+{% endblock %}

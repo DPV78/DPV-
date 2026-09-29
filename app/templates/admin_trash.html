@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Lixeira{% endblock %}
+{% block content %}
+<h1>Lixeira</h1>
+<section class="card">
+  <p class="small muted">Itens excluídos pela equipe. Restaurar devolve o item ao lugar de origem. Expurgar apaga definitivamente do banco; o conteúdo continua preservado na trilha de auditoria.</p>
+  {% if items %}
+  <table>
+    <thead><tr><th>Excluído em</th><th>Por</th><th>Tipo</th><th>Item</th><th>Processo</th><th></th></tr></thead>
+    <tbody>
+    {% for i in items %}
+    <tr>
+      <td class="small nowrap">{{ i.deleted_at|dt }}</td><td>{{ i.by }}</td><td>{{ i.kind.replace('_',' ') }}</td><td>{{ i.label }}</td>
+      <td class="small">{{ i.case.titulo if i.case else '—' }}{% if i.case and i.case.deleted_at and i.kind != 'processo' %} <span class="tag">na lixeira</span>{% endif %}</td>
+      <td class="nowrap">
+        <form method="post" action="/admin/lixeira/{{ i.kind }}/{{ i.id }}/restaurar" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small">Restaurar</button></form>
+        <details class="inline-details"><summary class="small">Expurgar</summary>
+          <form method="post" action="/admin/lixeira/{{ i.kind }}/{{ i.id }}/expurgar" class="row">
+            <input type="hidden" name="csrf" value="{{ csrf }}"><input name="confirmacao" placeholder="Digite EXPURGAR" required autocomplete="off"><button class="small danger">Apagar definitivamente</button>
+          </form>
+        </details>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted">A lixeira está vazia.</p>{% endif %}
+</section>
+{% endblock %}

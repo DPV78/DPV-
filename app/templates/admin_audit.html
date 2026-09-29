@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Auditoria{% endblock %}
+{% block content %}
+<h1>Trilha de auditoria</h1>
+{% if integrity %}<div class="flash">{{ integrity }}</div>{% endif %}
+<section class="card">
+  <form method="get" action="/admin/auditoria" class="row">
+    <select name="user_id"><option value="">Todos os usuários</option><option value="sistema" {% if f.user_id == 'sistema' %}selected{% endif %}>Sistema (automático)</option>
+      {% for u in users %}<option value="{{ u.id }}" {% if f.user_id == u.id|string %}selected{% endif %}>{{ u.name }}</option>{% endfor %}</select>
+    <select name="case_id"><option value="">Todos os processos</option>
+      {% for c in cases %}<option value="{{ c.id }}" {% if f.case_id == c.id|string %}selected{% endif %}>{{ c.titulo }}{% if c.deleted_at %} (lixeira){% endif %}</option>{% endfor %}</select>
+    <select name="tipo"><option value="">Todos os tipos</option>{% for t in tipos %}<option {% if f.tipo == t %}selected{% endif %}>{{ t }}</option>{% endfor %}</select>
+    <input type="date" name="inicio" value="{{ f.inicio }}" title="De">
+    <input type="date" name="fim" value="{{ f.fim }}" title="Até">
+    <input name="q" value="{{ f.q }}" placeholder="Buscar na descrição">
+    <button>Filtrar</button>
+    <a class="button" href="/admin/auditoria.csv?{{ request.query_params }}">Exportar CSV</a>
+  </form>
+  <form method="post" action="/admin/auditoria/verificar" class="row" style="margin-top:.6rem">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><button class="small">Verificar integridade da trilha</button>
+    <span class="small muted">Os registros são encadeados por hash: qualquer alteração direta no banco é detectada.</span>
+  </form>
+</section>
+<section class="card">
+  <table class="audit">
+    <thead><tr><th>Data/hora</th><th>Usuário</th><th>Tipo</th><th>Ação</th><th>Processo</th></tr></thead>
+    <tbody>
+    {% for r, det in entries %}
+    <tr>
+      <td class="nowrap small">{{ r.created_at.strftime('%d/%m/%Y %H:%M:%S') }}<br><span class="muted">#{{ r.id }}{% if r.ip %} · {{ r.ip }}{% endif %}</span></td>
+      <td>{{ r.user_name or 'Sistema' }}</td>
+      <td><span class="tag {% if r.tipo in ['excluir','expurgar','pje_ciencia'] %}red{% endif %}">{{ r.tipo }}</span></td>
+      <td>{{ r.acao }}
+        {% if det %}<details><summary class="small">Detalhes</summary>
+          <table class="diff small">
+            {% if det.antes is defined and det.depois is defined %}
+              <tr><th>Campo</th><th>Antes</th><th>Depois</th></tr>
+              {% for k, v in det.antes.items() %}<tr><td>{{ k }}</td><td class="prose">{{ v if v is not none else '—' }}</td><td class="prose">{{ det.depois.get(k) if det.depois.get(k) is not none else '—' }}</td></tr>{% endfor %}
+            {% else %}
+              {% for k, v in (det.depois or det.antes or det).items() %}<tr><td>{{ k }}</td><td class="prose" colspan="2">{{ v }}</td></tr>{% endfor %}
+            {% endif %}
+          </table>
+        </details>{% endif %}
+      </td>
+      <td class="small">{% if r.case_id %}<a href="/cases/{{ r.case_id }}">#{{ r.case_id }}</a>{% endif %}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="muted">Nenhum registro.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p>{% if page > 1 %}<a href="?{{ request.query_params|string|replace('page=' ~ page, '') }}&page={{ page - 1 }}">← Anteriores</a>{% endif %}
+     {% if has_next %} <a href="?{{ request.query_params|string|replace('&page=' ~ page, '')|replace('page=' ~ page, '') }}&page={{ page + 1 }}">Mais antigos →</a>{% endif %}</p>
+</section>
+{% endblock %}

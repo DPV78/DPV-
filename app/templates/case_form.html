@@ -42,4 +42,15 @@
   {% endif %}
   <div><button class="primary">Salvar</button> {% if case %}<a href="/cases/{{ case.id }}">Cancelar</a>{% endif %}</div>
 </form>
+{% if case %}
+<section class="card danger-zone">
+  <h2>Excluir processo</h2>
+  <p class="small">O processo vai para a lixeira com todo o seu histórico. Somente o administrador pode restaurá-lo ou apagá-lo definitivamente. A exclusão fica registrada na auditoria.</p>
+  <form method="post" action="/cases/{{ case.id }}/delete" class="row" onsubmit="return confirm('Mover este processo para a lixeira?')">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input name="motivo" required placeholder="Motivo da exclusão (obrigatório)" class="grow">
+    <button class="danger">Excluir processo</button>
+  </form>
+</section>
+{% endif %}
 {% endblock %}

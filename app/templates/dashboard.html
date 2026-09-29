@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Painel da carteira</h1>
+<div class="grid2">
+  <section class="card">
+    <h2>Prazos nos próximos 15 dias</h2>
+    {% if upcoming %}
+    <ul class="list">
+      {% for s in upcoming %}
+      <li class="{% if s.prazo < today() %}late{% elif s.prazo_fatal %}fatal{% endif %}">
+        <strong>{{ s.prazo|dt }}</strong>{% if s.prazo_fatal %} <span class="tag red">fatal</span>{% endif %}
+        <a href="/cases/{{ s.case.id }}#passos">{{ s.case.titulo }}</a> — {{ s.descricao }}
+        {% if s.responsavel %}<span class="muted">({{ s.responsavel.name }})</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">Nenhum prazo registrado para os próximos 15 dias.</p>{% endif %}
+  </section>
+  <section class="card">
+    <h2>Andamentos não lidos</h2>
+    {% if recent %}
+    <ul class="list">
+      {% for m in recent %}
+      <li><strong>{{ m.data|dt }}</strong> <span class="tag">{{ m.fonte }}</span>
+        <a href="/cases/{{ m.case.id }}#andamentos">{{ m.case.titulo }}</a> — {{ m.titulo }}</li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">Tudo lido.</p>{% endif %}
+  </section>
+</div>
+
+<section class="card">
+  <h2>Processos</h2>
+  {% if cases %}
+  <table>
+    <thead><tr><th>Processo</th><th>Cliente</th><th>Fase</th><th>Prioridade</th><th>Responsável</th><th>Novos</th><th>Decisões abertas</th><th>Próximo prazo</th><th>Última sincronização</th></tr></thead>
+    <tbody>
+    {% for c in cases %}
+      <tr class="{% if c.status != 'ativo' %}dim{% endif %}">
+        <td><a href="/cases/{{ c.id }}"><strong>{{ c.titulo }}</strong></a><br><span class="mono muted">{{ c.numero_cnj }} · {{ c.tribunal|upper }}</span></td>
+        <td>{{ c.cliente }}</td>
+        <td>{{ c.fase or '—' }}</td>
+        <td><span class="tag prio-{{ c.prioridade }}">{{ c.prioridade }}</span>{% if c.status != 'ativo' %} <span class="tag">{{ c.status }}</span>{% endif %}</td>
+        <td>{{ c.responsavel.name if c.responsavel else '—' }}</td>
+        <td>{% if unread.get(c.id) %}<span class="badge">{{ unread[c.id] }}</span>{% else %}—{% endif %}</td>
+        <td>{% if open_dec.get(c.id) %}<span class="badge amber">{{ open_dec[c.id] }}</span>{% else %}—{% endif %}</td>
+        <td>{{ next_deadline.get(c.id)|dt if next_deadline.get(c.id) else '—' }}</td>
+        <td class="muted small">{{ c.last_sync_at|dt if c.last_sync_at else 'nunca' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>Nenhum processo cadastrado. <a href="/cases/new">Cadastre o primeiro</a>.</p>
+  {% endif %}
+</section>
+{% endblock %}

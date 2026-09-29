@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}{{ case.titulo }} — Carteira Estratégica{% endblock %}
+{% block content %}
+<div class="case-head">
+  <div>
+    <h1>{{ case.titulo }}</h1>
+    <p class="mono">{{ case.numero_cnj }} · {{ case.tribunal|upper }}{% if case.orgao_julgador %} · {{ case.orgao_julgador }}{% endif %}</p>
+    <p>{{ case.cliente }} (polo {{ case.polo }}) × {{ case.parte_contraria or '—' }} · Fase: {{ case.fase or '—' }} ·
+      <span class="tag prio-{{ case.prioridade }}">{{ case.prioridade }}</span> {% if case.status != 'ativo' %}<span class="tag">{{ case.status }}</span>{% endif %}
+      · Responsável: {{ case.responsavel.name if case.responsavel else '—' }}</p>
+    <p class="muted small">Última sincronização: {{ case.last_sync_at|dt if case.last_sync_at else 'nunca' }}{% if case.last_sync_status %} — {{ case.last_sync_status }}{% endif %}</p>
+  </div>
+  <div class="actions">
+    <form method="post" action="/cases/{{ case.id }}/sync" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Sincronizar agora</button></form>
+    <form method="post" action="/cases/{{ case.id }}/triage" class="inline" data-busy="Analisando andamentos…"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="primary">Analisar novos andamentos</button></form>
+    <a class="button" href="/cases/{{ case.id }}/edit">Editar dados</a>
+  </div>
+</div>
+
+<nav class="tabs">
+  <a href="#estrategia">Estratégia</a><a href="#decisoes">Decisões</a><a href="#passos">Próximos passos</a><a href="#andamentos">Andamentos</a><a href="#notas">Notas</a><a href="#historico">Histórico</a>
+</nav>
+
+<section class="card" id="estrategia">
+  <h2>Estratégia de longo prazo</h2>
+  <div class="grid2">
+    <div><h3>Objetivo do cliente</h3><div class="prose">{{ case.objetivo or '—' }}</div></div>
+    <div><h3>Premissas</h3><div class="prose">{{ case.premissas or '—' }}</div></div>
+  </div>
+  <h3>Estratégia</h3><div class="prose">{{ case.estrategia or '—' }}</div>
+  <h3>Riscos</h3><div class="prose">{{ case.riscos or '—' }}</div>
+  <details>
+    <summary>Revisar estratégia</summary>
+    <form method="post" action="/cases/{{ case.id }}/strategy" class="stack">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>Objetivo do cliente <textarea name="objetivo" rows="3">{{ case.objetivo or '' }}</textarea></label>
+      <label>Estratégia <textarea name="estrategia" rows="8">{{ case.estrategia or '' }}</textarea></label>
+      <label>Premissas <textarea name="premissas" rows="3">{{ case.premissas or '' }}</textarea></label>
+      <label>Riscos <textarea name="riscos" rows="3">{{ case.riscos or '' }}</textarea></label>
+      <label>Motivo da revisão (obrigatório) <input name="motivo" required placeholder="Ex.: sentença de improcedência; premissa X caiu"></label>
+      <button class="primary">Salvar nova versão</button>
+    </form>
+  </details>
+  {% if case.strategy_versions|length > 1 %}
+  <details>
+    <summary>Versões anteriores ({{ case.strategy_versions|length }})</summary>
+    {% for v in case.strategy_versions %}
+    <div class="version">
+      <p><strong>{{ v.created_at|dt }}</strong> — {{ v.author.name if v.author else '—' }} — <em>{{ v.motivo }}</em></p>
+      <div class="prose small">{{ v.estrategia or '' }}</div>
+    </div>
+    {% endfor %}
+  </details>
+  {% endif %}
+</section>
+
+<section class="card" id="decisoes">
+  <h2>Pontos de decisão</h2>
+  {% if case.decisions %}
+  <ul class="list">
+    {% for d in case.decisions %}
+    <li>
+      <span class="tag {{ 'amber' if d.status=='aberta' else 'green' }}">{{ d.status }}</span>
+      <a href="/decisions/{{ d.id }}"><strong>{{ d.titulo }}</strong></a>
+      <span class="muted small">{{ d.created_at|dt }}{% if d.decided_at %} · decidida em {{ d.decided_at|dt }} por {{ d.decided_by.name if d.decided_by else '—' }}{% endif %}</span>
+      {% if d.decisao %}<div class="small">→ {{ d.decisao }}</div>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="muted">Nenhum ponto de decisão ainda.</p>{% endif %}
+  <details>
+    <summary>Abrir ponto de decisão</summary>
+    <form method="post" action="/cases/{{ case.id }}/decisions" class="stack">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>Qual decisão precisa ser tomada? <input name="titulo" required placeholder="Ex.: Recorrer da decisão que indeferiu a tutela?"></label>
+      <label>Contexto <textarea name="contexto" rows="4" placeholder="Informações que não estão nos andamentos: conversa com cliente, impressões da audiência, custos…"></textarea></label>
+      <label>Andamento relacionado
+        <select name="movement_id"><option value="">—</option>{% for m in case.movements[:40] %}<option value="{{ m.id }}">{{ m.data|dt }} — {{ m.titulo[:90] }}</option>{% endfor %}</select>
+      </label>
+      <button class="primary">Abrir e discutir</button>
+    </form>
+  </details>
+</section>
+
+<section class="card" id="passos">
+  <h2>Próximos passos</h2>
+  {% if pending %}
+  <table>
+    <thead><tr><th>Prazo</th><th>Passo</th><th>Responsável</th><th></th></tr></thead>
+    <tbody>
+    {% for s in pending %}
+    <tr class="{% if s.prazo and s.prazo < today() %}late{% elif s.prazo_fatal %}fatal{% endif %}">
+      <td>{{ s.prazo|dt if s.prazo else 'sem prazo' }}{% if s.prazo_fatal %} <span class="tag red">fatal</span>{% endif %}</td>
+      <td>{{ s.descricao }}</td>
+      <td>{{ s.responsavel.name if s.responsavel else '—' }}</td>
+      <td class="nowrap">
+        {% for st, label in [('concluido','Concluir'),('cancelado','Cancelar')] %}
+        <form method="post" action="/steps/{{ s.id }}/status" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="status" value="{{ st }}"><button class="small">{{ label }}</button></form>
+        {% endfor %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted">Nenhum passo pendente.</p>{% endif %}
+  <form method="post" action="/cases/{{ case.id }}/steps" class="row">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input name="descricao" placeholder="Novo passo" required class="grow">
+    <input type="date" name="prazo">
+    <label class="check"><input type="checkbox" name="prazo_fatal" value="1"> fatal</label>
+    <select name="responsavel_id"><option value="">Responsável</option>{% for u in users %}<option value="{{ u.id }}">{{ u.name }}</option>{% endfor %}</select>
+    <button>Adicionar</button>
+  </form>
+  {% if done %}
+  <details><summary>Concluídos/cancelados ({{ done|length }})</summary>
+    <ul class="list small">{% for s in done %}<li><span class="tag">{{ s.status }}</span> {{ s.descricao }} <span class="muted">{{ s.done_at|dt if s.done_at else '' }}</span></li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+</section>
+
+<section class="card" id="andamentos">
+  <div class="row between">
+    <h2>Andamentos</h2>
+    <form method="post" action="/cases/{{ case.id }}/movements/read-all" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small">Marcar todos como lidos</button></form>
+  </div>
+  <details>
+    <summary>Registrar andamento manual</summary>
+    <form method="post" action="/cases/{{ case.id }}/movements" class="stack">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <div class="row"><input type="date" name="data" required><input name="titulo" required placeholder="Resumo" class="grow"></div>
+      <textarea name="texto" rows="4" placeholder="Íntegra ou detalhes (opcional)"></textarea>
+      <button>Registrar</button>
+    </form>
+  </details>
+  <ul class="timeline">
+    {% for m in case.movements %}
+    <li class="{% if not m.lido %}unread{% endif %}">
+      <div class="row between">
+        <div><strong>{{ m.data|dt }}</strong> <span class="tag">{{ m.fonte }}</span>{% if m.impacto %} <span class="tag impact-{{ m.impacto }}">impacto {{ m.impacto }}</span>{% endif %} {{ m.titulo }}</div>
+        <div class="nowrap">
+          {% if not m.lido %}<form method="post" action="/movements/{{ m.id }}/read" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small">Lido</button></form>{% endif %}
+          <form method="post" action="/cases/{{ case.id }}/decisions" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="movement_id" value="{{ m.id }}"><input type="hidden" name="titulo" value="O que fazer diante de: {{ m.titulo[:200] }}"><button class="small">Discutir decisão</button></form>
+        </div>
+      </div>
+      {% if m.analise %}<div class="analysis small">{{ m.analise }}</div>{% endif %}
+      {% if m.texto %}<details><summary class="small">Texto</summary><div class="prose small">{{ m.texto }}</div></details>{% endif %}
+      {% if m.link %}<a href="{{ m.link }}" target="_blank" rel="noopener noreferrer" class="small">Abrir documento</a>{% endif %}
+    </li>
+    {% else %}
+    <li class="muted">Nenhum andamento. Clique em "Sincronizar agora" ou registre manualmente.</li>
+    {% endfor %}
+  </ul>
+</section>
+
+<section class="card" id="notas">
+  <h2>Notas da equipe</h2>
+  <form method="post" action="/cases/{{ case.id }}/notes" class="stack">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <textarea name="texto" rows="3" required placeholder="Registro interno: conversa com cliente, percepção sobre o juízo, informação dos autos…"></textarea>
+    <button>Salvar nota</button>
+  </form>
+  <ul class="list">
+    {% for n in case.notes %}<li><strong>{{ n.author.name if n.author else 'Assistente' }}</strong> <span class="muted small">{{ n.created_at|dt }}</span><div class="prose">{{ n.texto }}</div></li>{% endfor %}
+  </ul>
+</section>
+
+<section class="card" id="historico">
+  <h2>Histórico de atividades</h2>
+  <ul class="list small">
+    {% for l in logs %}<li><span class="muted">{{ l.created_at|dt }}</span> {{ l.user.name if l.user else 'Sistema' }} — {{ l.acao }}</li>{% endfor %}
+  </ul>
+</section>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Entrar{% endblock %}
+{% block content %}
+<div class="login-wrap">
+  {{ logo_svg }}
+  <p class="eyebrow">Carteira Estratégica</p>
+  <section class="card">
+    <form method="post" action="/login" class="stack">
+      <label>E-mail <input type="email" name="email" required autofocus></label>
+      <label>Senha <input type="password" name="password" required></label>
+      <button class="primary">Entrar</button>
+    </form>
+    <p class="muted small">Acesso restrito à equipe do escritório.</p>
+  </section>
+</div>
+{% endblock %}

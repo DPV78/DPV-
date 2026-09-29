@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Decisão — {{ d.titulo }}{% endblock %}
+{% block content %}
+<p><a href="/cases/{{ case.id }}#decisoes">← {{ case.titulo }}</a> <span class="mono muted">{{ case.numero_cnj }}</span></p>
+<h1>{{ d.titulo }} <span class="tag {{ 'amber' if d.status=='aberta' else 'green' }}">{{ d.status }}</span></h1>
+
+<div class="grid-decision">
+  <div>
+    {% if d.movement %}
+    <section class="card">
+      <h3>Andamento relacionado</h3>
+      <p><strong>{{ d.movement.data|dt }}</strong> <span class="tag">{{ d.movement.fonte }}</span> {{ d.movement.titulo }}</p>
+      {% if d.movement.texto %}<details><summary>Texto</summary><div class="prose small">{{ d.movement.texto }}</div></details>{% endif %}
+    </section>
+    {% endif %}
+    {% if d.contexto %}<section class="card"><h3>Contexto</h3><div class="prose">{{ d.contexto }}</div></section>{% endif %}
+
+    <section class="card">
+      <h2>Discussão</h2>
+      <div id="thread" class="thread">
+        {% for m in d.messages %}
+        <div class="msg {{ m.role }}">
+          <div class="who">{{ 'Assistente estratégico' if m.role=='assistant' else (m.author.name if m.author else 'Equipe') }} <span class="muted small">{{ m.created_at|dt }}</span></div>
+          <div class="body {% if m.role=='assistant' %}md{% endif %}">{{ m.content }}</div>
+        </div>
+        {% else %}
+        <p class="muted" id="empty-thread">Comece pedindo a análise do assistente ou registrando sua visão.</p>
+        {% endfor %}
+      </div>
+      <form id="msg-form" method="post" action="/decisions/{{ d.id }}/messages" class="stack">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <textarea name="content" id="msg-content" rows="4" placeholder="Sua posição, dúvidas, fatos novos, objeções à recomendação…"></textarea>
+        <div class="row">
+          <button type="submit">Enviar à equipe</button>
+          {% if ai_enabled %}
+          <button type="button" class="primary" id="ask-ai" data-url="/decisions/{{ d.id }}/assistant">Enviar e pedir análise do assistente</button>
+          {% else %}
+          <span class="muted small">Assistente desativado: configure ANTHROPIC_API_KEY.</span>
+          {% endif %}
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <aside>
+    <section class="card" id="registro">
+      <h2>Decisão</h2>
+      {% if d.status == 'decidida' %}
+      <p><strong>{{ d.decisao }}</strong></p>
+      {% if d.fundamentos %}<h3>Fundamentos</h3><div class="prose">{{ d.fundamentos }}</div>{% endif %}
+      <p class="muted small">Por {{ d.decided_by.name if d.decided_by else '—' }} em {{ d.decided_at|dt }}</p>
+      <form method="post" action="/decisions/{{ d.id }}/reopen"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small">Reabrir</button></form>
+      {% else %}
+      <form method="post" action="/decisions/{{ d.id }}/decide" class="stack">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label>O que foi decidido <textarea name="decisao" rows="3" required></textarea></label>
+        <label>Fundamentos / por quê <textarea name="fundamentos" rows="4"></textarea></label>
+        <button class="primary">Registrar decisão</button>
+      </form>
+      {% endif %}
+    </section>
+
+    <section class="card" id="passos">
+      <h2>Próximos passos</h2>
+      {% if steps %}
+      <ul class="list small">{% for s in steps %}<li><span class="tag">{{ s.status }}</span> {{ s.descricao }}{% if s.prazo %} — <strong>{{ s.prazo|dt }}</strong>{% endif %}</li>{% endfor %}</ul>
+      {% endif %}
+      {% if ai_enabled %}
+      <form method="post" action="/decisions/{{ d.id }}/suggest-steps" data-busy="Gerando sugestões…"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small">Sugerir passos com o assistente</button></form>
+      {% endif %}
+      {% if suggestions %}
+      <form method="post" action="/decisions/{{ d.id }}/steps" class="stack suggestions">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <p class="muted small">Revise antes de salvar. Confira qualquer prazo nos autos.</p>
+        {% for s in suggestions %}
+        <div class="suggestion">
+          <label class="check"><input type="checkbox" name="sel" value="{{ loop.index }}" checked> incluir</label>
+          <textarea name="descricao_{{ loop.index }}" rows="2">{{ s.descricao }}</textarea>
+          <div class="row">
+            <input type="date" name="prazo_{{ loop.index }}" value="{{ s.prazo }}">
+            <label class="check"><input type="checkbox" name="fatal_{{ loop.index }}" value="1" {% if s.prazo_fatal %}checked{% endif %}> fatal</label>
+            <select name="resp_{{ loop.index }}"><option value="">Responsável</option>{% for u in users %}<option value="{{ u.id }}">{{ u.name }}</option>{% endfor %}</select>
+          </div>
+          <p class="muted small">{{ s.justificativa }}</p>
+        </div>
+        {% endfor %}
+        <button class="primary">Salvar passos selecionados</button>
+      </form>
+      {% endif %}
+      <form method="post" action="/cases/{{ case.id }}/steps" class="stack">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="decision_id" value="{{ d.id }}">
+        <input name="descricao" placeholder="Novo passo" required>
+        <div class="row">
+          <input type="date" name="prazo">
+          <label class="check"><input type="checkbox" name="prazo_fatal" value="1"> fatal</label>
+          <select name="responsavel_id"><option value="">Responsável</option>{% for u in users %}<option value="{{ u.id }}">{{ u.name }}</option>{% endfor %}</select>
+        </div>
+        <button class="small">Adicionar passo</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h3>Estratégia vigente</h3>
+      <div class="prose small">{{ case.estrategia or 'Não registrada.' }}</div>
+      <a class="small" href="/cases/{{ case.id }}#estrategia">Revisar estratégia</a>
+    </section>
+  </aside>
+</div>
+{% endblock %}

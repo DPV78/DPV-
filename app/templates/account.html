@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card narrow">
+  <h1>Minha conta</h1>
+  <p>{{ user.name }} · {{ user.email }}{% if user.oab %} · OAB {{ user.oab }}{% endif %}</p>
+  <h2>Alterar senha</h2>
+  <form method="post" action="/account/password" class="stack">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Senha atual <input type="password" name="atual" required></label>
+    <label>Nova senha (mín. 10 caracteres) <input type="password" name="nova" minlength="10" required></label>
+    <button class="primary">Salvar</button>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Carteira Estratégica{% endblock %} · Nogueira Vasconcelos</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,400;0,700;1,400&display=swap">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+{% if user %}
+<header class="topbar">
+  <a class="brand" href="/" aria-label="Nogueira Vasconcelos — Carteira Estratégica">{{ logo_svg }}<span class="product">Carteira Estratégica</span></a>
+  <nav>
+    <a href="/">Painel</a>
+    <a href="/agenda">Agenda</a>
+    <a href="/cases/new">Novo processo</a>
+    {% if user.is_admin %}<a href="/users">Equipe</a>{% endif %}
+    <a href="/account">{{ user.name }}</a>
+    <form method="post" action="/logout" class="inline"><button class="link">Sair</button></form>
+  </nav>
+</header>
+{% endif %}
+<main class="container">
+  {% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+  {% block content %}{% endblock %}
+</main>
+<script>window.CSRF = "{{ csrf }}";</script>
+<script src="/static/app.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

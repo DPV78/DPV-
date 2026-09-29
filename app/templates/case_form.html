@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ 'Editar processo' if case else 'Novo processo estratégico' }}</h1>
+<form method="post" action="{{ '/cases/%d/edit'|format(case.id) if case else '/cases/new' }}" class="card stack">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="grid2">
+    {% if not case %}
+    <label>Número CNJ <input name="numero_cnj" placeholder="0000000-00.0000.0.00.0000" required class="mono"></label>
+    {% else %}
+    <label>Número CNJ <input value="{{ case.numero_cnj }}" disabled class="mono"></label>
+    {% endif %}
+    <label>Tribunal (alias DataJud) <input name="tribunal" value="{{ case.tribunal if case else '' }}" placeholder="deixe vazio para detectar: tjsp, trf3, trt2, stj…" {% if case %}required{% endif %}></label>
+    <label>Título interno <input name="titulo" value="{{ case.titulo if case else '' }}" required placeholder="Ex.: Ação anulatória — Contrato X"></label>
+    <label>Cliente <input name="cliente" value="{{ case.cliente if case else '' }}" required></label>
+    <label>Polo do cliente
+      <select name="polo">{% for p in ['ativo','passivo','terceiro'] %}<option {% if case and case.polo==p %}selected{% endif %}>{{ p }}</option>{% endfor %}</select>
+    </label>
+    <label>Parte contrária <input name="parte_contraria" value="{{ case.parte_contraria or '' if case else '' }}"></label>
+    <label>Valor da causa <input name="valor_causa" value="{{ case.valor_causa or '' if case else '' }}"></label>
+    <label>Fase <input name="fase" value="{{ case.fase or '' if case else '' }}" placeholder="Ex.: instrução, recurso no TJ, REsp…"></label>
+    <label>Prioridade
+      <select name="prioridade">{% for p in ['critica','alta','media'] %}<option {% if case and case.prioridade==p %}selected{% elif not case and p=='alta' %}selected{% endif %}>{{ p }}</option>{% endfor %}</select>
+    </label>
+    <label>Responsável
+      <select name="responsavel_id"><option value="">—</option>{% for u in users %}<option value="{{ u.id }}" {% if (case and case.responsavel_id==u.id) or (not case and u.id==user.id) %}selected{% endif %}>{{ u.name }}</option>{% endfor %}</select>
+    </label>
+    {% if case %}
+    <label>Órgão julgador <input name="orgao_julgador" value="{{ case.orgao_julgador or '' }}"></label>
+    <label>Classe <input name="classe" value="{{ case.classe or '' }}"></label>
+    <label>Situação
+      <select name="status">{% for p in ['ativo','suspenso','encerrado'] %}<option {% if case.status==p %}selected{% endif %}>{{ p }}</option>{% endfor %}</select>
+    </label>
+    {% endif %}
+  </div>
+  {% if not case %}
+  <h2>Estratégia de longo prazo</h2>
+  <p class="muted">É o que orienta o passo a passo e a análise do assistente. Pode ser refinada depois (cada revisão fica versionada).</p>
+  <label>Objetivo do cliente <textarea name="objetivo" rows="3" placeholder="Qual resultado concreto o cliente precisa? Em que prazo? Há espaço para acordo?"></textarea></label>
+  <label>Estratégia <textarea name="estrategia" rows="6" placeholder="Tese central, caminho processual previsto, instâncias, marcos e medidas planejadas."></textarea></label>
+  <label>Premissas <textarea name="premissas" rows="3" placeholder="Fatos ou condições que sustentam a estratégia — se mudarem, a estratégia deve ser revista."></textarea></label>
+  <label>Riscos <textarea name="riscos" rows="3"></textarea></label>
+  {% endif %}
+  <div><button class="primary">Salvar</button> {% if case %}<a href="/cases/{{ case.id }}">Cancelar</a>{% endif %}</div>
+</form>
+{% endblock %}

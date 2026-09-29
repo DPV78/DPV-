@@ -1,0 +1,5 @@
+Tipografia primária da marca: Boston Angel Bold (licença comercial; não distribuída neste repositório).
+Se o escritório possuir licença para uso web, coloque aqui o arquivo como:
+    BostonAngel-Bold.woff2
+e os títulos do aplicativo passarão a usá-la automaticamente. Sem o arquivo, os títulos usam Lato Bold
+(tipografia secundária oficial). O logotipo já é aplicado em vetor, extraído do manual de marca.

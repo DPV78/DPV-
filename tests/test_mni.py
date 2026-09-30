@@ -94,3 +94,11 @@ def test_client_sends_soapaction_and_classifies_block():
     with pytest.raises(mni.MniError) as e:
         blocked.consultar_avisos_pendentes(mni.Credential("1", "s"))
     assert e.value.kind == "bloqueio"
+
+
+def test_certificate_required_is_not_a_wrong_password():
+    xml = soap(f'<ns7:consultarTeorComunicacaoResposta {NS}><sucesso>false</sucesso>'
+               '<mensagem>Operação permitida somente com login por certificado digital</mensagem></ns7:consultarTeorComunicacaoResposta>')
+    with pytest.raises(mni.MniError) as e:
+        mni.read_response(xml.encode(), "text/xml", "consultarTeorComunicacao")
+    assert e.value.kind == "exige_certificado"

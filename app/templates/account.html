@@ -17,6 +17,16 @@
 <section class="card" id="pje">
   <h2>Minhas credenciais do PJe</h2>
   <p class="small muted">CPF e senha do PJe, usados para consultar seus processos e intimações pelo MNI. Ficam guardados criptografados neste servidor e nunca são exibidos. Se a senha for recusada, a credencial é suspensa automaticamente para evitar bloqueio da sua conta no tribunal.</p>
+  <details class="help">
+    <summary>Como criar a senha do PJe usando o seu token</summary>
+    <ol class="small">
+      <li>Entre no PJe do tribunal <strong>com o seu token</strong> (certificado A3), como você já faz hoje.</li>
+      <li>Cadastre uma senha no menu de cadastro de senha. Conforme a versão do PJe, o caminho é <em>Configuração › Pessoa › Cadastro de Senha</em> ou <em>menu Completo › Cadastro › Senha</em>.</li>
+      <li>Repita em cada sistema: <strong>TJRO 1º grau, TJRO 2º grau, TRF1 1º grau e TRF1 2º grau</strong> são instalações separadas do PJe. Se as senhas ficarem iguais, salve uma vez só aqui e marque os quatro.</li>
+      <li>Volte aqui, salve CPF e senha e clique em <strong>Testar</strong>.</li>
+    </ol>
+    <p class="small muted">A senha só permite consultar e acompanhar. Assinar peças continua exigindo o token (ou o Whom), diretamente no PJe. Em alguns tribunais, o registro de ciência também exige o certificado; nesse caso, o aplicativo avisa e você abre a intimação no PJe.</p>
+  </details>
   {% if not crypto_ok %}<p class="flash">O administrador ainda não configurou a chave de criptografia (CREDENTIALS_KEY). Não é possível salvar credenciais.</p>{% endif %}
   {% if creds %}
   <ul class="list">

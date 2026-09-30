@@ -180,6 +180,9 @@ def open_teor(db: Session, aviso: PjeAviso, user: User, http=None) -> PjeAviso:
         _mark(cred, e)
         audit.log(db, f"Falha ao abrir o teor da intimação {aviso.id_aviso}: {e}", tipo="pje_ciencia", case_id=aviso.case_id)
         db.commit()
+        if e.kind == "exige_certificado":
+            raise PjeUnavailable("Este tribunal só registra ciência com certificado digital. Abra a intimação diretamente no PJe "
+                                 f"com o seu token (ou pelo Whom). Resposta do tribunal: {e}") from e
         raise PjeUnavailable(f"O tribunal não devolveu o teor: {e}. Verifique no PJe se a ciência foi registrada.") from e
     aviso.status, aviso.teor = "aberto", teor.texto
     aviso.prazo_dias, aviso.tipo_prazo = teor.prazo_dias, teor.tipo_prazo

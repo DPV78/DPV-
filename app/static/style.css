@@ -141,3 +141,5 @@ table.audit td { font-size: .9rem; }
 fieldset.endpoints { border: 1px solid var(--line); border-radius: var(--radius); padding: .6rem .9rem; display: flex; flex-direction: column; gap: .35rem; }
 fieldset.endpoints legend { font-size: .72rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .12em; padding: 0 .3rem; }
 input[type="checkbox"], input[type="radio"] { accent-color: var(--nv-salvia); }
+details.help { border: 1px solid var(--line); border-radius: var(--radius); padding: .5rem .8rem; margin: 0 0 .8rem; }
+details.help ol { margin: .5rem 0; padding-left: 1.2rem; }

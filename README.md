@@ -107,11 +107,28 @@ Na primeira execução, o aplicativo já cadastra os quatro endereços:
    recurso com numeração própria no 2º grau (por exemplo, um agravo de instrumento) deve ser cadastrado como
    processo próprio.
 
+### Token (certificado A3) e Whom
+O MNI autentica por **CPF e senha do PJe**, não pelo certificado. O token entra uma única vez: cada advogado
+acessa o PJe com o token e **cadastra uma senha** (menu *Configuração › Pessoa › Cadastro de Senha* ou
+*Completo › Cadastro › Senha*, conforme a versão), em cada sistema: TJRO 1º grau, TJRO 2º grau, TRF1 1º grau e
+TRF1 2º grau. Depois, o aplicativo consulta tudo com essa senha, 24 horas por dia, sem depender de o token estar
+conectado. O passo a passo também aparece em **Minha conta**.
+
+- O acesso por senha serve para **ler e acompanhar**. **Assinar** continua exigindo o token (ou o Whom),
+  diretamente no PJe.
+- Em alguns tribunais, o registro de ciência também exige o certificado. A página do TJRO informa que o acesso
+  por senha não permite "registrar ciência de expedientes". Se o MNI recusar a abertura do teor por esse motivo, o
+  aplicativo mostra o aviso e orienta a abrir a intimação no PJe com o token. **Nesse caso, a senha não é
+  suspensa.**
+- **Por que o aplicativo não usa o token diretamente:** o token fica no computador de cada advogado e exige PIN a
+  cada uso. O servidor não consegue usá-lo para consultas automáticas, e o MNI não o pede para consultar.
+- **Whom (certificado em nuvem):** segundo a divulgação do fornecedor, oferece API. Seria o caminho para, no
+  futuro, **assinar ou peticionar pelo aplicativo** usando os certificados da equipe. Isso depende da
+  documentação e do contrato da API do Whom, que não pude verificar.
+
 ### Cuidados e limitações
 - **Nem todo PJe libera o MNI para advogados**, e um WSDL publicado não garante que o serviço funcione.
   Teste tribunal por tribunal.
-- O MNI funciona com login e senha. **Certificado digital A3 (token/cartão) não é usado**; se um tribunal exigir
-  certificado para o MNI, a integração com aquele tribunal não funcionará.
 - Se a senha for recusada, a credencial é **suspensa automaticamente**, para evitar o bloqueio da conta do
   advogado no tribunal por tentativas repetidas. Corrija a senha e clique em "Testar" para reativar.
 - As credenciais ficam criptografadas no banco, com a chave no `.env` do mesmo servidor. Proteja o acesso ao

@@ -32,7 +32,8 @@ from ..cnj import digits
 
 
 KIND_LABELS = {"credencial": "senha/credencial recusada", "bloqueio": "acesso bloqueado pelo tribunal",
-               "endpoint": "endereço indisponível", "resposta": "resposta inesperada", "nao_encontrado": "não encontrado"}
+               "endpoint": "endereço indisponível", "resposta": "resposta inesperada", "nao_encontrado": "não encontrado",
+               "exige_certificado": "o tribunal exige certificado digital (token) para esta operação"}
 
 
 class MniError(Exception):
@@ -184,11 +185,14 @@ def parse_datahora(value: str | None) -> datetime | None:
 
 _CRED_RE = re.compile(r"senha|autentic|credenc|usu[áa]rio|acesso negado|login", re.I)
 _NOT_FOUND_RE = re.compile(r"n[ãa]o (foi )?encontrad|inexistente|n[ãa]o localizad|n[ãa]o existe", re.I)
+_CERT_RE = re.compile(r"certificado", re.I)
 
 
 def _classify(msg: str) -> str:
     if _NOT_FOUND_RE.search(msg):
         return "nao_encontrado"
+    if _CERT_RE.search(msg):
+        return "exige_certificado"  # o tribunal exige o token para esta operação; não é senha errada
     return "credencial" if _CRED_RE.search(msg) else "resposta"
 
 

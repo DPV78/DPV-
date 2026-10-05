@@ -232,6 +232,15 @@ class PjeEndpoint(Base):
     last_check_at: Mapped[datetime | None] = mapped_column(DateTime)
     last_check_ok: Mapped[bool | None] = mapped_column(Boolean)
     last_check_status: Mapped[str | None] = mapped_column(String(500))
+    portal_url: Mapped[str | None] = mapped_column(String(500))  # página do PJe para acesso no navegador (token/Whom)
+
+    @property
+    def portal(self) -> str:
+        """Endereço do PJe no navegador: o informado pelo administrador ou o derivado do endereço do MNI."""
+        if self.portal_url:
+            return self.portal_url
+        base = self.url.split("?")[0]
+        return base[: -len("/intercomunicacao")] + "/" if base.endswith("/intercomunicacao") else base
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 
@@ -275,7 +284,7 @@ class PjeAviso(Base):
     orgao: Mapped[str | None] = mapped_column(String(300))
     destinatario: Mapped[str | None] = mapped_column(String(300))
     data_disponibilizacao: Mapped[date | None] = mapped_column(Date)
-    status: Mapped[str] = mapped_column(String(20), default="pendente")  # pendente / aberto / fora_do_pje
+    status: Mapped[str] = mapped_column(String(20), default="pendente")  # pendente / aberto / ciencia_externa / fora_do_pje
     teor: Mapped[str | None] = mapped_column(Text)
     prazo_dias: Mapped[int | None] = mapped_column(Integer)
     tipo_prazo: Mapped[str | None] = mapped_column(String(30))

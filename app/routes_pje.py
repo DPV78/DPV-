@@ -65,6 +65,26 @@ def aviso_open(aviso_id: int, request: Request, csrf: str = Form(""), confirmaca
     return back(f"/pje/avisos/{aviso_id}")
 
 
+@router.post("/pje/avisos/{aviso_id}/ciencia-externa")
+def aviso_external(aviso_id: int, request: Request, csrf: str = Form(""), observacao: str = Form(""),
+                   db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Registra que a intimação foi aberta fora do aplicativo (PJe no navegador, com token ou Whom)."""
+    from datetime import datetime
+
+    check_csrf(request, csrf)
+    aviso = get_or_404(db, PjeAviso, aviso_id)
+    if aviso.status not in {"pendente", "fora_do_pje"}:
+        flash(request, "Esta intimação já foi aberta.")
+        return back(f"/pje/avisos/{aviso_id}")
+    aviso.status, aviso.opened_by_id, aviso.opened_at = "ciencia_externa", user.id, datetime.now()
+    audit.log(db, f"Informou ciência da intimação {aviso.id_aviso} ({aviso.numero_processo}) feita fora do aplicativo (PJe/Whom)"
+              + (f": {observacao.strip()}" if observacao.strip() else ""), tipo="pje_ciencia", case_id=aviso.case_id,
+              entidade="pje_intimacao", entidade_id=aviso.id)
+    db.commit()
+    flash(request, "Registrado. Lance o prazo nos próximos passos do processo.")
+    return back(f"/pje/avisos/{aviso_id}")
+
+
 @router.post("/pje/avisos/{aviso_id}/vincular")
 def aviso_link(aviso_id: int, request: Request, csrf: str = Form(""), case_id: int = Form(...),
                db: Session = Depends(get_db), user: User = Depends(current_user)):

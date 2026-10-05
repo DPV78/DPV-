@@ -107,7 +107,7 @@ def endpoints_create(request: Request, csrf: str = Form(""), tribunal: str = For
 
 @router.post("/admin/pje/{ep_id}/edit")
 def endpoints_edit(ep_id: int, request: Request, csrf: str = Form(""), url: str = Form(...), versao_mni: str = Form("2.2.2"),
-                   db: Session = Depends(get_db), user: User = Depends(admin_user)):
+                   portal_url: str = Form(""), db: Session = Depends(get_db), user: User = Depends(admin_user)):
     check_csrf(request, csrf)
     ep = get_or_404(db, PjeEndpoint, ep_id)
     url = url.strip().removesuffix("?wsdl")
@@ -118,6 +118,8 @@ def endpoints_edit(ep_id: int, request: Request, csrf: str = Form(""), url: str 
         ep.origem = f"Alterado manualmente por {user.name}"
         ep.last_check_at = ep.last_check_ok = ep.last_check_status = None
     ep.url, ep.versao_mni = url, versao_mni
+    portal_url = portal_url.strip()
+    ep.portal_url = portal_url if portal_url.startswith("https://") else None
     db.commit()
     return back("/admin/pje")
 

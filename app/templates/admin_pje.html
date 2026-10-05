@@ -27,6 +27,7 @@
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <input name="url" value="{{ e.url }}" class="grow mono">
       <select name="versao_mni">{% for v in ['2.2.2','2.2.3'] %}<option {% if e.versao_mni == v %}selected{% endif %}>{{ v }}</option>{% endfor %}</select>
+      <input name="portal_url" value="{{ e.portal_url or '' }}" placeholder="Página do PJe no navegador: {{ e.portal }}" class="grow">
       <button class="small">Salvar</button>
     </form>
     {% if e.last_check_status %}<p class="small">Último diagnóstico ({{ e.last_check_at|dt }}): {{ e.last_check_status }}</p>{% endif %}

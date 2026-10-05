@@ -28,9 +28,27 @@
   {% endif %}
   {% if aviso.case %}<p><a class="button" href="/cases/{{ aviso.case.id }}#passos">Registrar próximo passo / prazo</a></p>{% endif %}
 </section>
+{% elif aviso.status == 'ciencia_externa' %}
+<section class="card"><p>Ciência registrada <strong>fora do aplicativo</strong> (PJe no navegador, com token ou Whom), informada por {{ aviso.opened_by.name if aviso.opened_by else '—' }} em {{ aviso.opened_at|dt }}. Consulte o teor e o prazo no PJe.</p>
+  <a class="button" href="{{ aviso.endpoint.portal }}" target="_blank" rel="noopener noreferrer">Abrir o PJe {{ aviso.endpoint.tribunal|upper }} {{ aviso.endpoint.instancia }}</a>
+  {% if aviso.case %} <a class="button" href="/cases/{{ aviso.case.id }}#passos">Registrar próximo passo / prazo</a>{% endif %}
+</section>
 {% elif aviso.status == 'pendente' %}
+<section class="card">
+  <h2>Abrir pelo PJe com token ou Whom</h2>
+  <p class="small">Use este caminho para assinar, peticionar ou quando o tribunal só registra ciência com certificado. Abra o PJe no navegador com o token ou com a extensão do Whom, localize a intimação do processo <span class="mono">{{ aviso.numero_processo }}</span> e, depois, informe aqui que a ciência foi registrada.</p>
+  <div class="row">
+    <a class="button primary-link" href="{{ aviso.endpoint.portal }}" target="_blank" rel="noopener noreferrer">Abrir o PJe {{ aviso.endpoint.tribunal|upper }} {{ aviso.endpoint.instancia }}</a>
+    <button type="button" class="small" data-copy="{{ aviso.numero_processo }}">Copiar nº do processo</button>
+  </div>
+  <form method="post" action="/pje/avisos/{{ aviso.id }}/ciencia-externa" class="row" onsubmit="return confirm('Confirmar que a ciência desta intimação foi registrada no PJe?')">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input name="observacao" placeholder="Observação (opcional)" class="grow">
+    <button>Informar: ciência registrada no PJe</button>
+  </form>
+</section>
 <section class="card danger-zone">
-  <h2>Abrir o teor e registrar ciência</h2>
+  <h2>Ou: abrir o teor por aqui (senha do PJe)</h2>
   <p><strong>Atenção:</strong> ao abrir o teor por aqui, o PJe registra que <strong>você</strong> tomou ciência da intimação nesta data e hora. Isso pode iniciar a contagem do prazo. Se preferir, abra pelo próprio PJe; esta intimação sairá da lista na próxima consulta.</p>
   {% if has_cred %}
   <form method="post" action="/pje/avisos/{{ aviso.id }}/abrir" class="row">

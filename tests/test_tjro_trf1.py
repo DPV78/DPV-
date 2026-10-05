@@ -98,3 +98,35 @@ def test_admin_diagnose_route_updates_version(monkeypatch):
         with SessionLocal() as db:
             ep = db.scalar(select(PjeEndpoint).where(PjeEndpoint.tribunal == "tjro", PjeEndpoint.instancia == "2g"))
             assert ep.last_check_ok and ep.versao_mni == "2.2.3"
+
+
+def test_portal_link_derived_from_mni_url():
+    with SessionLocal() as db:
+        ep = db.scalar(select(PjeEndpoint).where(PjeEndpoint.tribunal == "tjro", PjeEndpoint.instancia == "1g"))
+        assert ep.portal == "https://pjepg.tjro.jus.br/pje/"
+        ep.portal_url = "https://pjepg.tjro.jus.br/pje/login.seam"
+        assert ep.portal.endswith("login.seam")
+        db.rollback()
+
+
+def test_external_ciencia_via_whom_is_audited():
+    from datetime import date
+
+    from app.models import AuditLog, PjeAviso
+
+    with SessionLocal() as db:
+        ep = db.scalar(select(PjeEndpoint).where(PjeEndpoint.tribunal == "tjro", PjeEndpoint.instancia == "2g"))
+        aviso = PjeAviso(endpoint_id=ep.id, id_aviso="w1", numero_processo=TJRO, data_disponibilizacao=date.today())
+        db.add(aviso)
+        db.commit()
+        aviso_id = aviso.id
+    with TestClient(app) as c:
+        t = login(c)
+        page = c.get(f"/pje/avisos/{aviso_id}").text
+        assert "https://pjesg.tjro.jus.br/pje/" in page and "Whom" in page
+        c.post(f"/pje/avisos/{aviso_id}/ciencia-externa", data={"csrf": t, "observacao": "aberto com Whom"})
+    with SessionLocal() as db:
+        a = db.get(PjeAviso, aviso_id)
+        assert a.status == "ciencia_externa" and a.opened_by_id is not None
+        log = db.scalar(select(AuditLog).where(AuditLog.tipo == "pje_ciencia", AuditLog.entidade_id == aviso_id).order_by(AuditLog.id.desc()))
+        assert "fora do aplicativo" in log.acao and "aberto com Whom" in log.acao

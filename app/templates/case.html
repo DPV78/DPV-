@@ -158,7 +158,11 @@
 <section class="card" id="pje">
   <div class="row between">
     <h2>PJe</h2>
-    <a class="button" href="/cases/{{ case.id }}/pje/documentos">Listar peças do processo no PJe</a>
+    <div class="row">
+      {% for ep in pje_endpoints %}<a class="button" href="{{ ep.portal }}" target="_blank" rel="noopener noreferrer" title="Abrir no navegador (token ou Whom)">PJe {{ ep.instancia }} ↗</a>{% endfor %}
+      <button type="button" class="small" data-copy="{{ case.numero_cnj }}">Copiar nº</button>
+      <a class="button" href="/cases/{{ case.id }}/pje/documentos">Listar peças do processo no PJe</a>
+    </div>
   </div>
   <h3>Intimações</h3>
   {% if avisos %}

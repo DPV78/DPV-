@@ -143,3 +143,4 @@ fieldset.endpoints legend { font-size: .72rem; font-weight: 700; color: var(--mu
 input[type="checkbox"], input[type="radio"] { accent-color: var(--nv-salvia); }
 details.help { border: 1px solid var(--line); border-radius: var(--radius); padding: .5rem .8rem; margin: 0 0 .8rem; }
 details.help ol { margin: .5rem 0; padding-left: 1.2rem; }
+.button.primary-link { background: var(--nv-salvia); color: #fff; border-color: var(--nv-salvia); }

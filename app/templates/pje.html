@@ -8,7 +8,7 @@
 <section class="card alert-card">
   <p><strong>Como funciona:</strong> o aplicativo consulta as intimações pendentes com a credencial de cada advogado, <strong>sem registrar ciência</strong>. Abrir o teor por aqui <strong>registra a ciência no PJe em nome de quem abrir</strong> e pode iniciar a contagem do prazo. Esse ato exige confirmação e fica na auditoria.</p>
 </section>
-<p>{% for st, label in [('pendente','Pendentes'),('aberto','Abertas por aqui'),('fora_do_pje','Saíram da lista do PJe'),('todos','Todas')] %}
+<p>{% for st, label in [('pendente','Pendentes'),('aberto','Abertas por aqui'),('ciencia_externa','Abertas no PJe/Whom'),('fora_do_pje','Saíram da lista do PJe'),('todos','Todas')] %}
   <a href="/pje?status={{ st }}" class="{% if status == st %}active{% endif %}">{{ label }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</p>
 <section class="card">
   {% if avisos %}

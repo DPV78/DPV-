@@ -122,9 +122,14 @@ conectado. O passo a passo também aparece em **Minha conta**.
   suspensa.**
 - **Por que o aplicativo não usa o token diretamente:** o token fica no computador de cada advogado e exige PIN a
   cada uso. O servidor não consegue usá-lo para consultas automáticas, e o MNI não o pede para consultar.
-- **Whom (certificado em nuvem):** segundo a divulgação do fornecedor, oferece API. Seria o caminho para, no
-  futuro, **assinar ou peticionar pelo aplicativo** usando os certificados da equipe. Isso depende da
-  documentação e do contrato da API do Whom, que não pude verificar.
+- **Whom (certificado em nuvem), uso atual:** no processo e em cada intimação há botões **"Abrir o PJe"** (1º ou
+  2º grau, no navegador) e **"Copiar nº"**. O advogado conclui no PJe com o token ou com a extensão do Whom
+  (abrir a intimação, assinar, peticionar) e depois clica em **"Informar: ciência registrada no PJe"**. Isso fica
+  na auditoria com nome, data e hora, e a intimação passa para "Abertas no PJe/Whom". O endereço da página do PJe
+  é derivado do endereço do MNI e pode ser ajustado pelo administrador.
+- **Whom, integração por API (próxima etapa):** a doc9 divulga que o Whom tem API, mas a documentação não é
+  pública. Para o aplicativo executar ações com certificado diretamente (por exemplo, assinar ou protocolar), é
+  preciso obter da doc9 a documentação da API e um ambiente de testes.
 
 ### Cuidados e limitações
 - **Nem todo PJe libera o MNI para advogados**, e um WSDL publicado não garante que o serviço funcione.

@@ -205,7 +205,10 @@ def case_detail(case_id: int, request: Request, db: Session = Depends(get_db), u
     avisos = db.scalars(select(PjeAviso).where(PjeAviso.case_id == case_id).order_by(PjeAviso.first_seen_at.desc())).all()
     docs = db.scalars(select(PjeDocument).where(PjeDocument.case_id == case_id).order_by(PjeDocument.created_at.desc())).all()
     pending = sorted((s for s in case.steps if s.status == "pendente"), key=lambda s: (s.prazo is None, s.prazo or date.max))
+    from .pje_service import endpoints_for
+
     return render(request, "case.html", user, case=case, users=active_users(db), logs=logs, avisos=avisos, docs=docs,
+                  pje_endpoints=endpoints_for(db, case.tribunal),
                   pending=pending, done=[s for s in case.steps if s.status != "pendente"])
 
 

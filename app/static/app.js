@@ -77,3 +77,9 @@ if (askBtn) {
     }
   });
 }
+
+// Copiar número do processo (para colar no PJe aberto com token/Whom)
+document.querySelectorAll("[data-copy]").forEach(b => b.addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText(b.dataset.copy); const t = b.textContent; b.textContent = "Copiado"; setTimeout(() => b.textContent = t, 1500); }
+  catch { prompt("Copie o número:", b.dataset.copy); }
+}));

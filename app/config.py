@@ -6,7 +6,7 @@ from pathlib import Path
 def _load_dotenv(path: Path) -> None:
     if not path.exists():
         return
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in path.read_text(encoding="utf-8-sig").splitlines():  # utf-8-sig: aceita .env salvo pelo Bloco de Notas
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
